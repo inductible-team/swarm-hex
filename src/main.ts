@@ -1,5 +1,5 @@
 import './style.css';
-import { Application, Graphics, Rectangle, Container } from 'pixi.js';
+import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Texture } from 'pixi.js';
 
 const HEX_SIZE = 16;
 const COLS = 50;
@@ -17,6 +17,9 @@ let broodProgressGrid = createGrid(); // 0 to 100
 let score = 0;
 let globalBroodCount = 0;
 let gameState: 'PLAYING' | 'GAME_OVER' | 'GAME_WON' = 'PLAYING';
+
+let beeFrames: Texture[] = [];
+let beeContainer: Container;
 
 type BeaconType = 'GENERAL' | 'WAX' | 'BROOD' | 'BLIGHT';
 interface Beacon {
@@ -250,6 +253,7 @@ class Bee {
     age: number;
     maxAge: number;
     isQueen: boolean;
+    sprite: AnimatedSprite;
 
     constructor(x: number, y: number, isQueen: boolean = false) {
         this.x = x;
@@ -267,6 +271,18 @@ class Bee {
         this.targetJobState = -1;
         this.age = 0;
         this.maxAge = this.isQueen ? Infinity : 3600 + Math.random() * 1200; 
+
+        this.sprite = new AnimatedSprite(beeFrames);
+        this.sprite.anchor.set(0.5);
+        this.sprite.animationSpeed = 0.5 + Math.random() * 0.5;
+        this.sprite.play();
+        if (this.isQueen) {
+            this.sprite.scale.set(0.12);
+            this.sprite.tint = 0xFF1493;
+        } else {
+            this.sprite.scale.set(0.08);
+        }
+        beeContainer.addChild(this.sprite);
     }
 
     update(delta: number, totalWidth: number, totalHeight: number, bees: Bee[]) {
@@ -583,6 +599,9 @@ async function init() {
         appContainer.appendChild(app.canvas);
     }
 
+    const sheet = await Assets.load('/atlas.png.json');
+    beeFrames = sheet.animations.b;
+
     setupGrid();
 
     const world = new Container();
@@ -590,6 +609,9 @@ async function init() {
 
     const graphics = new Graphics();
     world.addChild(graphics);
+
+    beeContainer = new Container();
+    world.addChild(beeContainer);
 
     const btnGeneral = document.getElementById('btn-general') as HTMLButtonElement;
     const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
@@ -663,6 +685,7 @@ async function init() {
     });
 
     function resetGame() {
+        for (const bee of bees) bee.sprite.destroy();
         grid = createGrid();
         nextGrid = createGrid();
         workingBeesGrid = createGrid();
@@ -779,6 +802,7 @@ async function init() {
                         workingBeesGrid[bee.targetQ][bee.targetR] = Math.max(0, workingBeesGrid[bee.targetQ][bee.targetR] - 1);
                     }
                 }
+                bee.sprite.destroy();
                 bees.splice(i, 1);
             }
         }
@@ -883,6 +907,7 @@ async function init() {
                 const rColor = Math.floor(255);
                 const gbColor = Math.floor(255 * lifePct);
                 colorHex = (rColor << 16) | (gbColor << 8) | gbColor;
+                bee.sprite.tint = colorHex;
             }
 
             let targetAngle = Math.atan2(bee.vy, bee.vx);
@@ -902,49 +927,9 @@ async function init() {
             const interpSpeed = bee.isQueen ? 0.02 : 0.1;
             bee.rotation += diff * interpSpeed;
             
-            const angle = bee.rotation;
-
-            const size = bee.isQueen ? 5 : 4;
-
-            const dx = Math.cos(angle);
-            const dy = Math.sin(angle);
-            const nx = -Math.sin(angle);
-            const ny = Math.cos(angle);
-
-            // Draw wings
-            const wingSize = size * 1.5;
-            const wingOffset = size * 0.2;
-            const wingLeftX = px + dx * wingOffset + nx * wingSize;
-            const wingLeftY = py + dy * wingOffset + ny * wingSize;
-            const wingRightX = px + dx * wingOffset - nx * wingSize;
-            const wingRightY = py + dy * wingOffset - ny * wingSize;
-
-            graphics.moveTo(px, py);
-            graphics.lineTo(wingLeftX, wingLeftY);
-            graphics.moveTo(px, py);
-            graphics.lineTo(wingRightX, wingRightY);
-            graphics.stroke({ color: 0xFFFFFF, alpha: 0.8, width: size * 0.5 });
-
-            // Draw body (Kite shape)
-            const frontX = px + dx * size;
-            const frontY = py + dy * size;
-            const backX = px - dx * size;
-            const backY = py - dy * size;
-            const midLeftX = px - dx * (size * 0.2) + nx * (size * 0.8);
-            const midLeftY = py - dy * (size * 0.2) + ny * (size * 0.8);
-            const midRightX = px - dx * (size * 0.2) - nx * (size * 0.8);
-            const midRightY = py - dy * (size * 0.2) - ny * (size * 0.8);
-
-            graphics.moveTo(frontX, frontY);
-            graphics.lineTo(midLeftX, midLeftY);
-            graphics.lineTo(backX, backY);
-            graphics.lineTo(midRightX, midRightY);
-            graphics.lineTo(frontX, frontY);
-            graphics.fill({ color: colorHex });
-
-            if (bee.isQueen) {
-                graphics.stroke({ color: 0xFFFFFF, width: 1.5 });
-            }
+            bee.sprite.x = px;
+            bee.sprite.y = py;
+            bee.sprite.rotation = bee.rotation;
             
             if (bee.state === 'WORKING') {
                 const tPos = hexToPixel(bee.targetQ, bee.targetR);
