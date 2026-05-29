@@ -40,9 +40,8 @@ body, html {
 }
 
 #scoreVal { color: #ffd700; }
-#energyVal { color: #ff69b4; }
 
-#game-over {
+#game-over, #game-won {
   position: absolute;
   top: 0;
   left: 0;
@@ -57,18 +56,23 @@ body, html {
   color: white;
 }
 
-#game-over h1 {
+#game-won {
+  background: rgba(0, 20, 0, 0.85);
+}
+
+#game-over h1, #game-won h1 {
   font-size: 3rem;
-  color: #ff4444;
   margin-bottom: 10px;
 }
 
-#game-over p {
+#game-over h1 { color: #ff4444; }
+
+#game-over p, #game-won p {
   font-size: 1.5rem;
   margin-bottom: 30px;
 }
 
-#restartBtn {
+#restartBtn, #replayBtn {
   padding: 15px 30px;
   font-size: 1.2rem;
   font-weight: bold;

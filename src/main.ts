@@ -15,11 +15,8 @@ let nextBlightProgressGrid = createGrid();
 let broodProgressGrid = createGrid(); // 0 to 100
 
 let score = 0;
-let energy = 100;
 let globalBroodCount = 0;
-let gameState: 'PLAYING' | 'GAME_OVER' = 'PLAYING';
-const ENERGY_COST = 10;
-const ENERGY_REGEN = 0.25; // per frame
+let gameState: 'PLAYING' | 'GAME_OVER' | 'GAME_WON' = 'PLAYING';
 
 type BeaconType = 'GENERAL' | 'WAX' | 'BROOD' | 'BLIGHT';
 interface Beacon {
@@ -139,6 +136,13 @@ function updateCA() {
                     nextBlightProgressGrid[q][r] = 0;
                 }
             }
+
+            // Half-grown blight (infection) on healthy tiles decays if isolated
+            if (state !== 4 && nextBlightProgressGrid[q][r] > 0) {
+                if (countState(grid, q, r, 4) === 0) {
+                    nextBlightProgressGrid[q][r] = Math.max(0, nextBlightProgressGrid[q][r] - 5);
+                }
+            }
         }
     }
 
@@ -174,19 +178,6 @@ function updateCA() {
             if (nextGrid[q][r] !== 4 && nextBlightProgressGrid[q][r] >= 100) {
                 nextGrid[q][r] = 4;
                 nextBlightProgressGrid[q][r] = 0;
-            } else if (nextGrid[q][r] === 5) { // Immature Blight
-                if (countState(grid, q, r, 4) === 0) {
-                    // Naturally decays to nothing if islanded with no mature blight
-                    nextGrid[q][r] = 0;
-                    nextBlightProgressGrid[q][r] = 0;
-                } else {
-                    // Matures over time
-                    nextBlightProgressGrid[q][r] += 0.1;
-                    if (nextBlightProgressGrid[q][r] >= 100) {
-                        nextGrid[q][r] = 4;
-                        nextBlightProgressGrid[q][r] = 0;
-                    }
-                }
             }
         }
     }
@@ -250,6 +241,7 @@ class Bee {
     y: number;
     vx: number;
     vy: number;
+    rotation: number;
     speed: number;
     state: BeeState;
     targetQ: number;
@@ -268,6 +260,7 @@ class Bee {
         if (this.isQueen) this.speed = 0.56; // Queen is majestic and slower
         this.vx = Math.cos(angle) * this.speed;
         this.vy = Math.sin(angle) * this.speed;
+        this.rotation = angle;
         this.state = 'WANDERING';
         this.targetQ = -1;
         this.targetR = -1;
@@ -626,18 +619,16 @@ async function init() {
     app.stage.on('pointerdown', (e) => {
         if (gameState !== 'PLAYING') return;
         
-        // Energy check
-        if (energy < ENERGY_COST) return;
-
-        const localPos = graphics.worldTransform.applyInverse(e.global);
+        const localPos = graphics.toLocal(e.global);
+        
+        if (gameState !== 'PLAYING') return;
         
         // Check cooldown
         if (selectedBeaconType === 'WAX' && waxCooldown > 0) return;
         if (selectedBeaconType === 'BROOD' && broodCooldown > 0) return;
         if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) return;
 
-        // Apply cost and cooldown
-        energy -= ENERGY_COST;
+        // Apply cooldown
         if (selectedBeaconType === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
         if (selectedBeaconType === 'BROOD') broodCooldown = COOLDOWN_MAX.BROOD;
         if (selectedBeaconType === 'BLIGHT') blightCooldown = COOLDOWN_MAX.BLIGHT;
@@ -658,38 +649,41 @@ async function init() {
         bees.push(new Bee(GRID_WIDTH / 2 + (Math.random() - 0.5) * 50, GRID_HEIGHT / 2 + (Math.random() - 0.5) * 50, false));
     }
 
-    const energyEl = document.getElementById('energyVal');
-    const beeProgressEl = document.getElementById('beeProgressVal');
     const beeCountEl = document.getElementById('beeCountVal');
+    const completionEl = document.getElementById('completionVal');
 
-    const restartBtn = document.getElementById('restartBtn');
-    if (restartBtn) {
-        restartBtn.addEventListener('click', () => {
-            grid = createGrid();
-            nextGrid = createGrid();
-            workingBeesGrid = createGrid();
-            workProgressGrid = createGrid();
-            blightProgressGrid = createGrid();
-            nextBlightProgressGrid = createGrid();
-            broodProgressGrid = createGrid();
-            beacons.length = 0;
-            setupGrid();
-            score = 0;
-            energy = 100;
-            waxCooldown = 0;
-            broodCooldown = 0;
-            blightCooldown = 0;
-            beacons.length = 0;
-            selectBeacon('GENERAL');
-            bees.length = 0; 
-            bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
-            for (let i = 0; i < 3; i++) {
-                bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, false));
-            }
-            gameState = 'PLAYING';
-            const gameOverUI = document.getElementById('game-over');
-            if (gameOverUI) gameOverUI.style.display = 'none';
-        });
+    document.getElementById('restartBtn')!.addEventListener('click', () => {
+        document.getElementById('game-over')!.style.display = 'none';
+        resetGame();
+    });
+
+    document.getElementById('replayBtn')!.addEventListener('click', () => {
+        document.getElementById('game-won')!.style.display = 'none';
+        resetGame();
+    });
+
+    function resetGame() {
+        grid = createGrid();
+        nextGrid = createGrid();
+        workingBeesGrid = createGrid();
+        workProgressGrid = createGrid();
+        blightProgressGrid = createGrid();
+        nextBlightProgressGrid = createGrid();
+        broodProgressGrid = createGrid();
+        beacons.length = 0;
+        setupGrid();
+        score = 0;
+        waxCooldown = 0;
+        broodCooldown = 0;
+        blightCooldown = 0;
+        beacons.length = 0;
+        selectBeacon('GENERAL');
+        bees.length = 0; 
+        bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
+        for (let i = 0; i < 3; i++) {
+            bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, false));
+        }
+        gameState = 'PLAYING';
     }
 
     let caTime = 0;
@@ -708,16 +702,7 @@ async function init() {
         world.x = (window.innerWidth - GRID_WIDTH * scale) / 2;
         world.y = (window.innerHeight - GRID_HEIGHT * scale) / 2;
 
-        if (energy < 100) {
-            energy += ENERGY_REGEN * ticker.deltaTime;
-            if (energy > 100) energy = 100;
-        }
-        
-        if (energyEl) energyEl.innerText = Math.floor(energy).toString();
-        // beeProgressEl removed, leave DOM check just in case
-        if (beeProgressEl) beeProgressEl.innerText = "N/A";
         if (beeCountEl) beeCountEl.innerText = bees.length.toString();
-
         let currentBroodCount = 0;
         for (let q = 0; q < COLS; q++) {
             for (let r = 0; r < ROWS; r++) {
@@ -892,17 +877,73 @@ async function init() {
             let colorHex = 0xFFFFFF;
             
             if (bee.isQueen) {
-                graphics.circle(px, py, 4); // Queen is larger
-                colorHex = 0xFF1493;
-                graphics.fill({ color: colorHex }); // Deep Pink / Royal Purple
-                graphics.stroke({ color: 0xFFFFFF, width: 2 }); // Crown/Outline
+                colorHex = 0xFF1493; // Deep Pink / Royal Purple
             } else {
-                graphics.circle(px, py, 3.5); // Normal worker size
                 const lifePct = Math.max(0, 1 - ageRatio);
                 const rColor = Math.floor(255);
                 const gbColor = Math.floor(255 * lifePct);
                 colorHex = (rColor << 16) | (gbColor << 8) | gbColor;
-                graphics.fill({ color: colorHex });
+            }
+
+            let targetAngle = Math.atan2(bee.vy, bee.vx);
+            if (bee.state === 'WORKING') {
+                const tPos = hexToPixel(bee.targetQ, bee.targetR);
+                const cx = tPos.x + (Math.sqrt(3) * HEX_SIZE) / 2;
+                const cy = tPos.y + HEX_SIZE;
+                targetAngle = Math.atan2(cy - py, cx - px);
+            }
+
+            // Smooth rotation interpolation
+            let diff = targetAngle - bee.rotation;
+            // Normalize diff to -PI to PI
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            
+            const interpSpeed = bee.isQueen ? 0.02 : 0.1;
+            bee.rotation += diff * interpSpeed;
+            
+            const angle = bee.rotation;
+
+            const size = bee.isQueen ? 5 : 4;
+
+            const dx = Math.cos(angle);
+            const dy = Math.sin(angle);
+            const nx = -Math.sin(angle);
+            const ny = Math.cos(angle);
+
+            // Draw wings
+            const wingSize = size * 1.5;
+            const wingOffset = size * 0.2;
+            const wingLeftX = px + dx * wingOffset + nx * wingSize;
+            const wingLeftY = py + dy * wingOffset + ny * wingSize;
+            const wingRightX = px + dx * wingOffset - nx * wingSize;
+            const wingRightY = py + dy * wingOffset - ny * wingSize;
+
+            graphics.moveTo(px, py);
+            graphics.lineTo(wingLeftX, wingLeftY);
+            graphics.moveTo(px, py);
+            graphics.lineTo(wingRightX, wingRightY);
+            graphics.stroke({ color: 0xFFFFFF, alpha: 0.8, width: size * 0.5 });
+
+            // Draw body (Kite shape)
+            const frontX = px + dx * size;
+            const frontY = py + dy * size;
+            const backX = px - dx * size;
+            const backY = py - dy * size;
+            const midLeftX = px - dx * (size * 0.2) + nx * (size * 0.8);
+            const midLeftY = py - dy * (size * 0.2) + ny * (size * 0.8);
+            const midRightX = px - dx * (size * 0.2) - nx * (size * 0.8);
+            const midRightY = py - dy * (size * 0.2) - ny * (size * 0.8);
+
+            graphics.moveTo(frontX, frontY);
+            graphics.lineTo(midLeftX, midLeftY);
+            graphics.lineTo(backX, backY);
+            graphics.lineTo(midRightX, midRightY);
+            graphics.lineTo(frontX, frontY);
+            graphics.fill({ color: colorHex });
+
+            if (bee.isQueen) {
+                graphics.stroke({ color: 0xFFFFFF, width: 1.5 });
             }
             
             if (bee.state === 'WORKING') {
@@ -915,10 +956,17 @@ async function init() {
             }
         }
 
+        if (completionEl) {
+            const pct = Math.floor((aliveCells / (COLS * ROWS)) * 100);
+            completionEl.innerText = pct.toString();
+        }
+
         if (aliveCells === 0) {
             gameState = 'GAME_OVER';
-            const gameOverUI = document.getElementById('game-over');
-            if (gameOverUI) gameOverUI.style.display = 'flex';
+            document.getElementById('game-over')!.style.display = 'flex';
+        } else if (aliveCells >= COLS * ROWS * 0.9) {
+            gameState = 'GAME_WON';
+            document.getElementById('game-won')!.style.display = 'flex';
         }
     });
 }

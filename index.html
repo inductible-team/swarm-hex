@@ -8,12 +8,16 @@
   </head>
   <body>
     <div id="ui-layer">
-      <div class="stat">Energy: <span id="energyVal">100</span>%</div>
+      <div class="stat">Completion: <span id="completionVal">0</span>% / 90%</div>
       <div class="stat">Swarm Size: <span id="beeCountVal">10</span></div>
     </div>
     <div id="game-over" style="display: none;">
       <h1>The Hive Has Fallen</h1>
       <button id="restartBtn">Rebuild Hive</button>
+    </div>
+    <div id="game-won" style="display: none;">
+      <h1 style="color: #00FF00;">Swarm Dominance Achieved!</h1>
+      <button id="replayBtn">Play Again</button>
     </div>
     
     <div id="beacon-toolbar">
