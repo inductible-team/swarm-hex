@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Swarm Hex</title>
+  </head>
+  <body>
+    <div id="ui-layer">
+      <div class="stat">Energy: <span id="energyVal">100</span>%</div>
+      <div class="stat">Swarm Size: <span id="beeCountVal">10</span></div>
+    </div>
+    <div id="game-over" style="display: none;">
+      <h1>The Hive Has Fallen</h1>
+      <button id="restartBtn">Rebuild Hive</button>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

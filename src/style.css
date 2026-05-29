@@ -1,0 +1,90 @@
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #111;
+  color: #fff;
+  font-family: sans-serif;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#ui-layer {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px 20px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.stat {
+  font-size: 1.2rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+#scoreVal { color: #ffd700; }
+#energyVal { color: #ff69b4; }
+
+#game-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(20, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  color: white;
+}
+
+#game-over h1 {
+  font-size: 3rem;
+  color: #ff4444;
+  margin-bottom: 10px;
+}
+
+#game-over p {
+  font-size: 1.5rem;
+  margin-bottom: 30px;
+}
+
+#restartBtn {
+  padding: 15px 30px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  background-color: #ffd700;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+#restartBtn:hover {
+  background-color: #fff;
+  transform: scale(1.05);
+}
+
+canvas {
+  display: block;
+}
