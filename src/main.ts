@@ -21,7 +21,29 @@ let gameState: 'PLAYING' | 'GAME_OVER' = 'PLAYING';
 const ENERGY_COST = 10;
 const ENERGY_REGEN = 0.25; // per frame
 
-let beaconPos: {x: number, y: number, life: number} | null = null;
+type BeaconType = 'GENERAL' | 'WAX' | 'BROOD' | 'BLIGHT';
+interface Beacon {
+    x: number;
+    y: number;
+    life: number;
+    type: BeaconType;
+}
+
+let beacons: Beacon[] = [];
+let selectedBeaconType: BeaconType = 'GENERAL';
+let waxCooldown = 0;
+let broodCooldown = 0;
+let blightCooldown = 0;
+
+const COOLDOWN_MAX = {
+    'WAX': 10,
+    'BROOD': 15,
+    'BLIGHT': 20
+};
+
+const BEACON_AOE = HEX_SIZE * 20; // 320px
+const BEACON_DEADZONE = HEX_SIZE * 5; // 80px
+const BEACON_INTERRUPT = HEX_SIZE * 10; // 160px
 
 const GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
 const GRID_HEIGHT = ROWS * 1.5 * HEX_SIZE;
@@ -108,7 +130,7 @@ function updateCA() {
                 }
             } else if (state === 4) {
                 // Maturation (slower)
-                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 10);
+                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 5);
                 
                 // Overcrowding death
                 let blightNeighbors = countState(grid, q, r, 4);
@@ -138,7 +160,7 @@ function updateCA() {
                     
                     if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
                         if (nextGrid[nq][nr] !== 4 && workingBeesGrid[nq][nr] === 0) {
-                            nextBlightProgressGrid[nq][nr] += 10; 
+                            nextBlightProgressGrid[nq][nr] += 5; 
                         }
                     }
                 }
@@ -152,6 +174,19 @@ function updateCA() {
             if (nextGrid[q][r] !== 4 && nextBlightProgressGrid[q][r] >= 100) {
                 nextGrid[q][r] = 4;
                 nextBlightProgressGrid[q][r] = 0;
+            } else if (nextGrid[q][r] === 5) { // Immature Blight
+                if (countState(grid, q, r, 4) === 0) {
+                    // Naturally decays to nothing if islanded with no mature blight
+                    nextGrid[q][r] = 0;
+                    nextBlightProgressGrid[q][r] = 0;
+                } else {
+                    // Matures over time
+                    nextBlightProgressGrid[q][r] += 0.1;
+                    if (nextBlightProgressGrid[q][r] >= 100) {
+                        nextGrid[q][r] = 4;
+                        nextBlightProgressGrid[q][r] = 0;
+                    }
+                }
             }
         }
     }
@@ -229,8 +264,8 @@ class Bee {
         this.y = y;
         this.isQueen = isQueen;
         const angle = Math.random() * Math.PI * 2;
-        this.speed = 1.05; 
-        if (this.isQueen) this.speed = 0.8; // Queen is majestic and slower
+        this.speed = 0.95; 
+        if (this.isQueen) this.speed = 0.56; // Queen is majestic and slower
         this.vx = Math.cos(angle) * this.speed;
         this.vy = Math.sin(angle) * this.speed;
         this.state = 'WANDERING';
@@ -244,20 +279,24 @@ class Bee {
     update(delta: number, totalWidth: number, totalHeight: number, bees: Bee[]) {
         this.age += delta / 60; 
 
-        let distToBeacon = Infinity;
+        let closestBeacon: Beacon | null = null;
+        let distToClosestBeacon = Infinity;
 
-        const BEACON_AOE = HEX_SIZE * 20; // 320px
-        const BEACON_DEADZONE = HEX_SIZE * 5; // 80px
-        const BEACON_INTERRUPT = HEX_SIZE * 10; // 160px
+        // Find closest beacon
+        if (!this.isQueen) {
+            for (const b of beacons) {
+                const dist = Math.hypot(b.x - this.x, b.y - this.y);
+                if (dist < distToClosestBeacon) {
+                    distToClosestBeacon = dist;
+                    closestBeacon = b;
+                }
+            }
+        }
 
         // Beacon Interrupt
         let shouldPursueBeacon = false;
-        if (beaconPos && !this.isQueen) { // Queen ignores beacon!
-            distToBeacon = Math.hypot(beaconPos.x - this.x, beaconPos.y - this.y);
-            // If beacon is dropped nearby (but outside the free agency zone), interrupt them!
-            if (distToBeacon < BEACON_INTERRUPT && distToBeacon > BEACON_DEADZONE) {
-                shouldPursueBeacon = true;
-            }
+        if (closestBeacon && distToClosestBeacon < BEACON_INTERRUPT && distToClosestBeacon > BEACON_DEADZONE) {
+            shouldPursueBeacon = true;
         }
 
         if (this.state === 'WORKING' || this.state === 'SEEKING_JOB') {
@@ -413,27 +452,45 @@ class Bee {
                 }
             }
 
-            if (bq !== -1) {
-                this.targetQ = bq; this.targetR = br; this.state = 'SEEKING_JOB';
-                this.targetJobState = grid[bq][br];
-                workingBeesGrid[bq][br]++; 
-            } else if (hq !== -1) {
-                this.targetQ = hq; this.targetR = hr; this.state = 'SEEKING_JOB';
-                this.targetJobState = grid[hq][hr];
-                workingBeesGrid[hq][hr]++; 
-            } else if (wq !== -1) {
-                this.targetQ = wq; this.targetR = wr; this.state = 'SEEKING_JOB';
-                this.targetJobState = grid[wq][wr];
-                workingBeesGrid[wq][wr]++; 
-            } else {
+            let priorityOrder = [4, 1, 0]; // Default: Blight, Brood, Wax
+            if (closestBeacon && distToClosestBeacon < BEACON_AOE) {
+                if (closestBeacon.type === 'WAX') priorityOrder = [0, 4, 1];
+                else if (closestBeacon.type === 'BROOD') priorityOrder = [1, 4, 0];
+                else if (closestBeacon.type === 'BLIGHT') priorityOrder = [4, 1, 0]; // Same but strictly enforced by AOE
+            }
+
+            let assigned = false;
+            for (const p of priorityOrder) {
+                if (p === 4 && bq !== -1) {
+                    this.targetQ = bq; this.targetR = br; this.state = 'SEEKING_JOB';
+                    this.targetJobState = grid[bq][br];
+                    workingBeesGrid[bq][br]++; 
+                    assigned = true;
+                    break;
+                } else if (p === 1 && hq !== -1) {
+                    this.targetQ = hq; this.targetR = hr; this.state = 'SEEKING_JOB';
+                    this.targetJobState = grid[hq][hr];
+                    workingBeesGrid[hq][hr]++; 
+                    assigned = true;
+                    break;
+                } else if (p === 0 && wq !== -1) {
+                    this.targetQ = wq; this.targetR = wr; this.state = 'SEEKING_JOB';
+                    this.targetJobState = grid[wq][wr];
+                    workingBeesGrid[wq][wr]++; 
+                    assigned = true;
+                    break;
+                }
+            }
+
+            if (!assigned) {
                 this.vx += (Math.random() - 0.5) * 1.0;
                 this.vy += (Math.random() - 0.5) * 1.0;
 
                 // Beacon bias: only pulls wandering bees within a maximum radius
-                if (beaconPos && !this.isQueen && distToBeacon > BEACON_DEADZONE && distToBeacon < BEACON_AOE) {  
+                if (closestBeacon && distToClosestBeacon > BEACON_DEADZONE && distToClosestBeacon < BEACON_AOE) {  
                     const pullStrength = 0.15;
-                    this.vx += ((beaconPos.x - this.x) / distToBeacon) * pullStrength;
-                    this.vy += ((beaconPos.y - this.y) / distToBeacon) * pullStrength;
+                    this.vx += ((closestBeacon.x - this.x) / distToClosestBeacon) * pullStrength;
+                    this.vy += ((closestBeacon.y - this.y) / distToClosestBeacon) * pullStrength;
                 }
 
                 // Queen bias: pull towards nearest empty Brood cell
@@ -541,20 +598,63 @@ async function init() {
     const graphics = new Graphics();
     world.addChild(graphics);
 
+    const btnGeneral = document.getElementById('btn-general') as HTMLButtonElement;
+    const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
+    const btnBrood = document.getElementById('btn-brood') as HTMLButtonElement;
+    const btnBlight = document.getElementById('btn-blight') as HTMLButtonElement;
+
+    function selectBeacon(type: BeaconType) {
+        selectedBeaconType = type;
+        btnGeneral.classList.remove('active');
+        btnWax.classList.remove('active');
+        btnBrood.classList.remove('active');
+        btnBlight.classList.remove('active');
+
+        if (type === 'GENERAL') btnGeneral.classList.add('active');
+        if (type === 'WAX') btnWax.classList.add('active');
+        if (type === 'BROOD') btnBrood.classList.add('active');
+        if (type === 'BLIGHT') btnBlight.classList.add('active');
+    }
+
+    btnGeneral.addEventListener('click', () => selectBeacon('GENERAL'));
+    btnWax.addEventListener('click', () => selectBeacon('WAX'));
+    btnBrood.addEventListener('click', () => selectBeacon('BROOD'));
+    btnBlight.addEventListener('click', () => selectBeacon('BLIGHT'));
+
     app.stage.eventMode = 'static';
-    app.stage.hitArea = new Rectangle(0, 0, 10000, 10000); // large catch-all
+    app.stage.hitArea = new Rectangle(0, 0, app.screen.width, app.screen.height);
     app.stage.on('pointerdown', (e) => {
         if (gameState !== 'PLAYING') return;
-        if (energy >= ENERGY_COST) {
-            energy -= ENERGY_COST;
-            const localPos = world.toLocal(e.global);
-            beaconPos = { x: localPos.x, y: localPos.y, life: 100 };
+        
+        // Energy check
+        if (energy < ENERGY_COST) return;
+
+        const localPos = graphics.worldTransform.applyInverse(e.global);
+        
+        // Check cooldown
+        if (selectedBeaconType === 'WAX' && waxCooldown > 0) return;
+        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) return;
+        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) return;
+
+        // Apply cost and cooldown
+        energy -= ENERGY_COST;
+        if (selectedBeaconType === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
+        if (selectedBeaconType === 'BROOD') broodCooldown = COOLDOWN_MAX.BROOD;
+        if (selectedBeaconType === 'BLIGHT') blightCooldown = COOLDOWN_MAX.BLIGHT;
+
+        // Remove any existing beacon of the same type
+        for (let i = beacons.length - 1; i >= 0; i--) {
+            if (beacons[i].type === selectedBeaconType) {
+                beacons.splice(i, 1);
+            }
         }
+        beacons.push({ x: localPos.x, y: localPos.y, life: 100, type: selectedBeaconType });
+        selectBeacon('GENERAL'); // Auto-revert to general
     });
 
     const bees: Bee[] = [];
     bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true)); // 1 Queen
-    for (let i = 0; i < 9; i++) { // 9 Workers
+    for (let i = 0; i < 3; i++) {
         bees.push(new Bee(GRID_WIDTH / 2 + (Math.random() - 0.5) * 50, GRID_HEIGHT / 2 + (Math.random() - 0.5) * 50, false));
     }
 
@@ -572,13 +672,18 @@ async function init() {
             blightProgressGrid = createGrid();
             nextBlightProgressGrid = createGrid();
             broodProgressGrid = createGrid();
-            beaconPos = null;
+            beacons.length = 0;
             setupGrid();
             score = 0;
             energy = 100;
+            waxCooldown = 0;
+            broodCooldown = 0;
+            blightCooldown = 0;
+            beacons.length = 0;
+            selectBeacon('GENERAL');
             bees.length = 0; 
             bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
-            for (let i = 0; i < 9; i++) {
+            for (let i = 0; i < 3; i++) {
                 bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, false));
             }
             gameState = 'PLAYING';
@@ -621,7 +726,7 @@ async function init() {
                     score += 0.05 * ticker.deltaTime; // Still generate yield
                     
                     if (broodProgressGrid[q][r] > 0) { // ONLY incubate if Queen laid an egg
-                        broodProgressGrid[q][r] += 0.025 * ticker.deltaTime; // Incubation timer (Takes twice as long)
+                        broodProgressGrid[q][r] += 0.05 * ticker.deltaTime; // Incubation timer
                         
                         if (broodProgressGrid[q][r] >= 100) {
                             // Hatch! Revert to Wax and spawn a bee.
@@ -640,12 +745,34 @@ async function init() {
         }
         globalBroodCount = currentBroodCount;
 
-        // Decay beacon
-        if (beaconPos) {
-            // Decays 100 life in roughly 10 seconds
-            beaconPos.life -= (ticker.deltaTime / 60) * 10;
-            if (beaconPos.life <= 0) {
-                beaconPos = null;
+        // Cooldown Timers
+        const dtSeconds = ticker.deltaTime / 60;
+        if (waxCooldown > 0) waxCooldown = Math.max(0, waxCooldown - dtSeconds);
+        if (broodCooldown > 0) broodCooldown = Math.max(0, broodCooldown - dtSeconds);
+        if (blightCooldown > 0) blightCooldown = Math.max(0, blightCooldown - dtSeconds);
+
+        const cdWaxEl = document.getElementById('cd-wax');
+        const cdBroodEl = document.getElementById('cd-brood');
+        const cdBlightEl = document.getElementById('cd-blight');
+
+        if (cdWaxEl) cdWaxEl.innerText = waxCooldown > 0 ? `(${Math.ceil(waxCooldown)}s)` : '';
+        if (cdBroodEl) cdBroodEl.innerText = broodCooldown > 0 ? `(${Math.ceil(broodCooldown)}s)` : '';
+        if (cdBlightEl) cdBlightEl.innerText = blightCooldown > 0 ? `(${Math.ceil(blightCooldown)}s)` : '';
+
+        btnWax.disabled = waxCooldown > 0;
+        btnBrood.disabled = broodCooldown > 0;
+        btnBlight.disabled = blightCooldown > 0;
+
+        // Auto revert UI if trying to select a disabled button
+        if (selectedBeaconType === 'WAX' && waxCooldown > 0) selectBeacon('GENERAL');
+        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) selectBeacon('GENERAL');
+        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) selectBeacon('GENERAL');
+
+        // Decay beacons
+        for (let i = beacons.length - 1; i >= 0; i--) {
+            beacons[i].life -= dtSeconds * 10;
+            if (beacons[i].life <= 0) {
+                beacons.splice(i, 1);
             }
         }
 
@@ -693,8 +820,7 @@ async function init() {
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
                     else if (state === 4) {
-                        if (infection >= 100) graphics.fill({ color: 0x4B0082 }); 
-                        else graphics.fill({ color: 0x6A0DAD }); 
+                        graphics.fill({ color: 0x4B0082 }); 
                     }
                     
                     if (state !== 0) {
@@ -706,7 +832,8 @@ async function init() {
                         const broodProg = broodProgressGrid[q][r];
                         if (broodProg > 0) {
                             graphics.fill({ color: 0xFFFFFF, alpha: 0.7 });
-                            drawHex(graphics, px, py, HEX_SIZE * 0.9 * (broodProg / 100));
+                            const scale = 0.2 + (broodProg / 100) * 0.8;
+                            drawHex(graphics, px, py, HEX_SIZE * 0.9 * scale);
                             graphics.fill();
                             graphics.fill({ alpha: 1.0 }); 
                         }
@@ -735,21 +862,26 @@ async function init() {
             }
         }
 
-        // Draw beacon
-        if (beaconPos) {
+        // Draw beacons
+        for (const b of beacons) {
             const time = performance.now() * 0.005;
             const pulse = 1 + Math.sin(time) * 0.2;
-            const lifeRatio = beaconPos.life / 100;
+            const lifeRatio = b.life / 100;
             
+            let color = 0x00FFFF; // General
+            if (b.type === 'WAX') color = 0xFFD700;
+            else if (b.type === 'BROOD') color = 0xFFFFFF;
+            else if (b.type === 'BLIGHT') color = 0x8A2BE2;
+
             // Draw Area of Effect radius
-            graphics.circle(beaconPos.x, beaconPos.y, HEX_SIZE * 20);
-            graphics.stroke({ color: 0x00FFFF, alpha: 0.1 * lifeRatio, width: 1 });
+            graphics.circle(b.x, b.y, BEACON_AOE);
+            graphics.stroke({ color: color, alpha: 0.1 * lifeRatio, width: 1 });
 
             // Draw core beacon
-            graphics.circle(beaconPos.x, beaconPos.y, HEX_SIZE * 2 * pulse);
-            graphics.stroke({ color: 0x00FFFF, alpha: 0.5 * lifeRatio, width: 2 });
-            graphics.circle(beaconPos.x, beaconPos.y, 4);
-            graphics.fill({ color: 0x00FFFF, alpha: lifeRatio });
+            graphics.circle(b.x, b.y, BEACON_DEADZONE * pulse);
+            graphics.stroke({ color: color, alpha: 0.5 * lifeRatio, width: 2 });
+            graphics.circle(b.x, b.y, 4);
+            graphics.fill({ color: color, alpha: lifeRatio });
         }
 
         for (const bee of bees) {
@@ -765,7 +897,7 @@ async function init() {
                 graphics.fill({ color: colorHex }); // Deep Pink / Royal Purple
                 graphics.stroke({ color: 0xFFFFFF, width: 2 }); // Crown/Outline
             } else {
-                graphics.circle(px, py, 2.5); // Normal worker size
+                graphics.circle(px, py, 3.5); // Normal worker size
                 const lifePct = Math.max(0, 1 - ageRatio);
                 const rColor = Math.floor(255);
                 const gbColor = Math.floor(255 * lifePct);
