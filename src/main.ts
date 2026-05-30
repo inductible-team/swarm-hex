@@ -177,8 +177,8 @@ function updateCA() {
     }
     const totalCells = COLS * ROWS;
 
-    // 1. Random weed spawn (anywhere on map) - capped at 15% blight coverage
-    if (blightCount / totalCells < 0.15 && Math.random() < 0.05) {
+    // 1. Random weed spawn (anywhere on map) - capped at 20% blight coverage
+    if (blightCount / totalCells < 0.20 && Math.random() < 0.07) {
         const q = Math.floor(Math.random() * COLS);
         const r = Math.floor(Math.random() * ROWS);
         if (grid[q][r] === 0) {
@@ -204,7 +204,7 @@ function updateCA() {
                 }
             } else if (state === 4) {
                 // Maturation (slower)
-                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 4);
+                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 6);
                 
                 // Mature blight stays alive forever until bees destroy it
                 // (Removed overcrowding death)
@@ -213,7 +213,7 @@ function updateCA() {
             // Half-grown blight (infection) on healthy tiles decays if isolated
             if (state !== 4 && nextBlightProgressGrid[q][r] > 0) {
                 if (countState(grid, q, r, 4) === 0) {
-                    nextBlightProgressGrid[q][r] = Math.max(0, nextBlightProgressGrid[q][r] - 5);
+                    nextBlightProgressGrid[q][r] = Math.max(0, nextBlightProgressGrid[q][r] - 3);
                 }
             }
         }
@@ -237,8 +237,8 @@ function updateCA() {
                     
                     if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
                         if (nextGrid[nq][nr] !== 4 && nextGrid[nq][nr] !== 5 && workingBeesGrid[nq][nr] === 0) {
-                            let spreadSpeed = 4;
-                            if (grid[nq][nr] === 1) spreadSpeed = 2; // Grows twice as slow on Wax cells
+                            let spreadSpeed = 6;
+                            if (grid[nq][nr] === 1) spreadSpeed = 3; // Grows slightly slower on Wax cells
                             
                             nextBlightProgressGrid[nq][nr] += spreadSpeed; 
                         }
@@ -977,9 +977,42 @@ async function init() {
                         drawHex(graphics, px, py, HEX_SIZE * 0.9 * (blightProgressGrid[q][r] / 100));
                         graphics.fill();
                     } else if (state !== 0) {
-                        const tileScale = state === 5 ? 1.1 : 0.9;
+                        const tileScale = state === 5 ? 1.02 : 0.9;
                         drawHex(graphics, px, py, HEX_SIZE * tileScale);
                         graphics.fill();
+
+                        // Add inner outline for exposed wood edges
+                        if (state === 5) {
+                            const innerSize = HEX_SIZE * 0.9;
+                            const pts = [];
+                            for (let i = 0; i < 6; i++) {
+                                const angle_rad = Math.PI / 180 * (60 * i - 30);
+                                pts.push({ x: px + innerSize * Math.cos(angle_rad), y: py + innerSize * Math.sin(angle_rad) });
+                            }
+                            
+                            const edgeToNeighbor = [0, 5, 4, 3, 2, 1];
+                            const dirs = getNeighbors(q, r);
+                            
+                            for (let j = 0; j < 6; j++) {
+                                const neighborIdx = edgeToNeighbor[j];
+                                const [dq, dr] = dirs[neighborIdx];
+                                const nq = q + dq;
+                                const nr = r + dr;
+                                
+                                let isExposed = false;
+                                if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
+                                    if (grid[nq][nr] !== 5) {
+                                        isExposed = true;
+                                    }
+                                }
+                                
+                                if (isExposed) {
+                                    graphics.moveTo(pts[j].x, pts[j].y);
+                                    graphics.lineTo(pts[(j + 1) % 6].x, pts[(j + 1) % 6].y);
+                                    graphics.stroke({ color: 0x5C4033, width: 4 });
+                                }
+                            }
+                        }
                     }
 
                     if (state === 3) {
