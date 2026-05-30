@@ -127,7 +127,7 @@ function updateCA() {
                 }
             } else if (state === 4) {
                 // Maturation (slower)
-                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 5);
+                nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 4);
                 
                 // Mature blight stays alive forever until bees destroy it
                 // (Removed overcrowding death)
@@ -160,8 +160,8 @@ function updateCA() {
                     
                     if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
                         if (nextGrid[nq][nr] !== 4 && workingBeesGrid[nq][nr] === 0) {
-                            let spreadSpeed = 5;
-                            if (grid[nq][nr] === 1) spreadSpeed = 2.5; // Grows twice as slow on Wax cells
+                            let spreadSpeed = 4;
+                            if (grid[nq][nr] === 1) spreadSpeed = 2; // Grows twice as slow on Wax cells
                             
                             nextBlightProgressGrid[nq][nr] += spreadSpeed; 
                         }
@@ -251,11 +251,17 @@ class Bee {
     maxAge: number;
     isQueen: boolean;
     sprite: AnimatedSprite;
+    health: number;
+    maxHealth: number;
 
     constructor(x: number, y: number, isQueen: boolean = false) {
         this.x = x;
         this.y = y;
         this.isQueen = isQueen;
+        this.age = 0;
+        this.maxAge = this.isQueen ? Infinity : 45 + Math.random() * 10;
+        this.health = 100;
+        this.maxHealth = 100;
         const angle = Math.random() * Math.PI * 2;
         this.speed = 0.95; 
         if (this.isQueen) this.speed = 0.56; // Queen is majestic and slower
@@ -284,6 +290,23 @@ class Bee {
 
     update(delta: number, totalWidth: number, totalHeight: number, bees: Bee[]) {
         this.age += delta / 60; 
+
+        // Queen health mechanic
+        if (this.isQueen && gameState === 'PLAYING') {
+            const h = getHexFromPixel(this.x, this.y);
+            if (h.q >= 0 && h.q < COLS && h.r >= 0 && h.r < ROWS) {
+                if (grid[h.q][h.r] === 4 && blightProgressGrid[h.q][h.r] >= 100) {
+                    this.health -= (delta / 60) * 10; // Dies in ~10 seconds
+                    if (this.health <= 0) {
+                        gameState = 'GAME_OVER';
+                        document.getElementById('game-over')!.style.display = 'flex';
+                        document.getElementById('game-over')!.querySelector('h1')!.innerText = 'The Queen is Dead';
+                    }
+                } else if (this.health < this.maxHealth) {
+                    this.health = Math.min(this.maxHealth, this.health + (delta / 60) * 3); // Heal
+                }
+            }
+        }
 
         let closestBeacon: Beacon | null = null;
         let distToClosestBeacon = Infinity;
@@ -354,8 +377,6 @@ class Bee {
             else if (cellState === 4) progressSpeed = 4.0; // Blight Removal: Fastest
             else if (cellState === 3 && this.isQueen) progressSpeed = 3.0; // Queen laying egg: Fast
 
-            workProgressGrid[this.targetQ][this.targetR] += delta * progressSpeed;
-            
             // Blight exposure accelerates aging by 4x
             if (cellState === 4) {
                 this.age += (delta / 60) * 3;
@@ -371,7 +392,7 @@ class Bee {
                 return; // Early return for Blight
             }
 
-            // Normal jobs
+            // Normal jobs (Wax, Brood, Eggs)
             workProgressGrid[this.targetQ][this.targetR] += delta * progressSpeed;
 
             // Complete work
@@ -670,7 +691,7 @@ async function init() {
 
     const bees: Bee[] = [];
     bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true)); // 1 Queen
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 1; i++) {
         bees.push(new Bee(GRID_WIDTH / 2 + (Math.random() - 0.5) * 50, GRID_HEIGHT / 2 + (Math.random() - 0.5) * 50, false));
     }
 
@@ -706,7 +727,7 @@ async function init() {
         selectBeacon('GENERAL');
         bees.length = 0; 
         bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 1; i++) {
             bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, false));
         }
         gameState = 'PLAYING';
@@ -944,6 +965,26 @@ async function init() {
                 graphics.stroke({ color: colorHex, alpha: 0.4, width: 2 });
             }
             */
+        }
+
+        // Draw Queen Health Bar
+        for (const bee of bees) {
+            if (bee.isQueen && bee.health < bee.maxHealth && bee.health > 0) {
+                const barWidth = 40;
+                const barHeight = 4;
+                const barX = bee.x - barWidth / 2;
+                const barY = bee.y - 30; // Above her head
+
+                // Background
+                graphics.fill({ color: 0x222222 });
+                graphics.rect(barX, barY, barWidth, barHeight);
+                graphics.fill();
+                
+                // Health
+                graphics.fill({ color: 0xff0000 });
+                graphics.rect(barX, barY, barWidth * Math.max(0, bee.health / bee.maxHealth), barHeight);
+                graphics.fill();
+            }
         }
 
         if (completionEl) {
