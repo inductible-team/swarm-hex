@@ -15,7 +15,7 @@ let nextBlightProgressGrid = createGrid();
 let broodProgressGrid = createGrid(); // 0 to 100
 
 let score = 0;
-let globalBroodCount = 0;
+// let globalBroodCount = 0;
 let gameState: 'PLAYING' | 'GAME_OVER' | 'GAME_WON' = 'PLAYING';
 
 let beeFrames: Texture[] = [];
@@ -41,9 +41,8 @@ const COOLDOWN_MAX = {
     'BLIGHT': 20
 };
 
-const BEACON_AOE = HEX_SIZE * 20; // 320px
+const BEACON_AOE = HEX_SIZE * 10; // 160px
 const BEACON_DEADZONE = HEX_SIZE * 5; // 80px
-const BEACON_INTERRUPT = HEX_SIZE * 10; // 160px
 
 const GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
 const GRID_HEIGHT = ROWS * 1.5 * HEX_SIZE;
@@ -53,19 +52,17 @@ function createGrid(): number[][] {
 }
 
 function setupGrid() {
-    const cx = Math.floor(COLS / 2);
-    const cy = Math.floor(ROWS / 2);
-    grid[cx][cy] = 3; // Ensure 1 starting Brood cell
+    const centerQ = Math.floor(COLS / 2);
+    const centerR = Math.floor(ROWS / 2);
+    
+    // Create initial hive cluster (triangle of 3 cells to satisfy >= 2 neighbor decay rule)
+    grid[centerQ][centerR] = 3; 
+    broodProgressGrid[centerQ][centerR] = 0.01; // Starter egg
 
-    // Surround it with Wax 1 tile thick
-    const dirs = getNeighbors(cx, cy);
-    for (const [dq, dr] of dirs) {
-        const nq = cx + dq;
-        const nr = cy + dr;
-        if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
-            grid[nq][nr] = 1;
-        }
-    }
+    const dirs = getNeighbors(centerQ, centerR);
+    // dirs[0] and dirs[1] are adjacent to each other on a hex grid
+    grid[centerQ + dirs[0][0]][centerR + dirs[0][1]] = 1; 
+    grid[centerQ + dirs[1][0]][centerR + dirs[1][1]] = 1;
 }
 
 function getNeighbors(_q: number, r: number) {
@@ -104,7 +101,7 @@ function countState(g: number[][], q: number, r: number, targetState: number): n
 
 function updateCA() {
     // 1. Random weed spawn (anywhere on map)
-    if (Math.random() < 0.2) {
+    if (Math.random() < 0.05) {
         const q = Math.floor(Math.random() * COLS);
         const r = Math.floor(Math.random() * ROWS);
         if (grid[q][r] === 0) {
@@ -132,12 +129,8 @@ function updateCA() {
                 // Maturation (slower)
                 nextBlightProgressGrid[q][r] = Math.min(100, blightProgressGrid[q][r] + 5);
                 
-                // Overcrowding death
-                let blightNeighbors = countState(grid, q, r, 4);
-                if (blightNeighbors > 4 && Math.random() < 0.05) {
-                    nextGrid[q][r] = 0;
-                    nextBlightProgressGrid[q][r] = 0;
-                }
+                // Mature blight stays alive forever until bees destroy it
+                // (Removed overcrowding death)
             }
 
             // Half-grown blight (infection) on healthy tiles decays if isolated
@@ -167,7 +160,10 @@ function updateCA() {
                     
                     if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
                         if (nextGrid[nq][nr] !== 4 && workingBeesGrid[nq][nr] === 0) {
-                            nextBlightProgressGrid[nq][nr] += 5; 
+                            let spreadSpeed = 5;
+                            if (grid[nq][nr] === 1) spreadSpeed = 2.5; // Grows twice as slow on Wax cells
+                            
+                            nextBlightProgressGrid[nq][nr] += spreadSpeed; 
                         }
                     }
                 }
@@ -180,7 +176,8 @@ function updateCA() {
         for (let r = 0; r < ROWS; r++) {
             if (nextGrid[q][r] !== 4 && nextBlightProgressGrid[q][r] >= 100) {
                 nextGrid[q][r] = 4;
-                nextBlightProgressGrid[q][r] = 0;
+                nextBlightProgressGrid[q][r] = 100; // Cap it at 100
+                workProgressGrid[q][r] = 0; // Reset any lingering work progress
             }
         }
     }
@@ -270,7 +267,7 @@ class Bee {
         this.targetR = -1;
         this.targetJobState = -1;
         this.age = 0;
-        this.maxAge = this.isQueen ? Infinity : 60 + Math.random() * 30; // 60 to 90 seconds
+        this.maxAge = this.isQueen ? Infinity : 45 + Math.random() * 10; // ~50s (1.5x incubation time)
 
         this.sprite = new AnimatedSprite(beeFrames);
         this.sprite.anchor.set(0.5);
@@ -302,10 +299,27 @@ class Bee {
             }
         }
 
-        // Beacon Interrupt
-        let shouldPursueBeacon = false;
-        if (closestBeacon && distToClosestBeacon < BEACON_INTERRUPT && distToClosestBeacon > BEACON_DEADZONE) {
-            shouldPursueBeacon = true;
+        // Beacon logic
+        let shouldMoveToBeacon = false;
+        let shouldAbortCurrentJob = false;
+        let priorityOrder = [4, 1, 0]; // Default: Blight, Brood, Wax
+        if (closestBeacon && !this.isQueen) {
+            if (distToClosestBeacon <= BEACON_DEADZONE) {
+                // Inner zone: job seeking with strict priority
+                if (closestBeacon.type === 'WAX') {
+                    priorityOrder = [0];
+                    if (this.targetJobState !== 0 && this.targetJobState !== -1) shouldAbortCurrentJob = true;
+                } else if (closestBeacon.type === 'BROOD') {
+                    priorityOrder = [1];
+                    if (this.targetJobState !== 1 && this.targetJobState !== -1) shouldAbortCurrentJob = true;
+                } else if (closestBeacon.type === 'BLIGHT') {
+                    priorityOrder = [4];
+                    if (this.targetJobState !== 4 && this.targetJobState !== -1) shouldAbortCurrentJob = true;
+                }
+            } else if (distToClosestBeacon <= BEACON_AOE) {
+                // Outer zone: drop jobs and move directly to beacon
+                shouldMoveToBeacon = true;
+            }
         }
 
         if (this.state === 'WORKING' || this.state === 'SEEKING_JOB') {
@@ -313,19 +327,22 @@ class Bee {
             
             let lostAdjacency = false;
             if (this.targetJobState === 0) {
-                if (countStructuralNeighbors(grid, this.targetQ, this.targetR) === 0) {
+                if (countStructuralNeighbors(grid, this.targetQ, this.targetR) < 2) {
                     lostAdjacency = true;
                 }
             } else if (this.targetJobState === 1) {
-                if (countStructuralNeighbors(grid, this.targetQ, this.targetR) < 6) {
+                if (countStructuralNeighbors(grid, this.targetQ, this.targetR) < 2) {
                     lostAdjacency = true;
                 }
             }
 
-            // Abort if the job is gone (cell state changed from what we targeted), OR if interrupted by beacon, OR lost valid neighbors
-            if (shouldPursueBeacon || cellState !== this.targetJobState || lostAdjacency) {
-                workingBeesGrid[this.targetQ][this.targetR]--;
+            // Abort if the job is gone, lost neighbors, OR if we need to move/abort for a beacon
+            if (shouldMoveToBeacon || shouldAbortCurrentJob || cellState !== this.targetJobState || lostAdjacency) {
+                workingBeesGrid[this.targetQ][this.targetR] = Math.max(0, workingBeesGrid[this.targetQ][this.targetR] - 1);
                 this.state = 'WANDERING';
+                this.targetQ = -1;
+                this.targetR = -1;
+                this.targetJobState = -1;
             }
         }
 
@@ -342,39 +359,37 @@ class Bee {
             // Blight exposure accelerates aging by 4x
             if (cellState === 4) {
                 this.age += (delta / 60) * 3;
+                blightProgressGrid[this.targetQ][this.targetR] -= delta * progressSpeed;
+                
+                if (blightProgressGrid[this.targetQ][this.targetR] <= 0) {
+                    grid[this.targetQ][this.targetR] = 0;
+                    blightProgressGrid[this.targetQ][this.targetR] = 0; 
+                    workProgressGrid[this.targetQ][this.targetR] = 0; // Clear any old work progress
+                    workingBeesGrid[this.targetQ][this.targetR] = Math.max(0, workingBeesGrid[this.targetQ][this.targetR] - 1);
+                    this.state = 'WANDERING';
+                }
+                return; // Early return for Blight
             }
+
+            // Normal jobs
+            workProgressGrid[this.targetQ][this.targetR] += delta * progressSpeed;
 
             // Complete work
             if (workProgressGrid[this.targetQ][this.targetR] >= 100) {
-                if (cellState === 4) { // Blight -> Empty
-                    grid[this.targetQ][this.targetR] = 0;
-                    blightProgressGrid[this.targetQ][this.targetR] = 0; 
-                } else if (cellState === 0) { // Empty -> Wax
+                if (cellState === 0) { // Empty -> Wax
                     grid[this.targetQ][this.targetR] = 1;
                     blightProgressGrid[this.targetQ][this.targetR] = 0; 
+
                 } else if (cellState === 1) { // Wax -> Brood
                     grid[this.targetQ][this.targetR] = 3;
                     blightProgressGrid[this.targetQ][this.targetR] = 0; 
                     broodProgressGrid[this.targetQ][this.targetR] = 0; // 0 means Prepared but Empty!
                     score += 50;
-                    
-                    // Cleanse and fortify neighbors
-                    const dirs = getNeighbors(this.targetQ, this.targetR);
-                    for (const [dq, dr] of dirs) {
-                        const nq = this.targetQ + dq;
-                        const nr = this.targetR + dr;
-                        if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
-                            if (grid[nq][nr] !== 3) {
-                                grid[nq][nr] = 1;
-                                blightProgressGrid[nq][nr] = 0; 
-                            }
-                        }
-                    }
-                } else if (cellState === 3 && this.isQueen) { // Queen laid an egg
+                } else if (cellState === 3 && this.isQueen) { // Queen laying egg
                     broodProgressGrid[this.targetQ][this.targetR] = 0.01; // Start incubation!
                 }
                 workProgressGrid[this.targetQ][this.targetR] = 0;
-                workingBeesGrid[this.targetQ][this.targetR]--;
+                workingBeesGrid[this.targetQ][this.targetR] = Math.max(0, workingBeesGrid[this.targetQ][this.targetR] - 1);
                 this.state = 'WANDERING';
             }
             return; // Working bees don't move
@@ -403,13 +418,18 @@ class Bee {
                 this.vy = (dy / dist) * this.speed;
             }
         } else if (this.state === 'WANDERING') {
-            // Job Scanning
-            let bq = -1, br = -1; // Blight
-            let hq = -1, hr = -1; // Brooding
-            let wq = -1, wr = -1; // Waxing
+            if (shouldMoveToBeacon && closestBeacon) {
+                // Outer zone: fly directly to beacon
+                const dx = closestBeacon.x - this.x;
+                const dy = closestBeacon.y - this.y;
+                this.vx = (dx / distToClosestBeacon) * this.speed;
+                this.vy = (dy / distToClosestBeacon) * this.speed;
+            } else {
+                // Job Scanning
+                let bq = -1, br = -1; // Blight
+                let hq = -1, hr = -1; // Brooding
+                let wq = -1, wr = -1; // Waxing
 
-            // Only scan for jobs if we aren't actively pursuing an interrupting beacon
-            if (!shouldPursueBeacon) {
                 const hex = getHexFromPixel(this.x, this.y);
                 if (hex.q >= 0 && hex.q < COLS && hex.r >= 0 && hex.r < ROWS) {
                     const scanTiles = [{q: hex.q, r: hex.r}];
@@ -444,88 +464,71 @@ class Bee {
                             if (state === 4 && bq === -1) {
                                 bq = q; br = r;
                             } else if (state === 1 && hq === -1) {
-                                // Check if eligible for Brood (surrounded by 6 structure, and adjacent to existing Brood)
-                                if (countStructuralNeighbors(grid, q, r) === 6) {
-                                    // Must be adjacent to existing Brood, OR be the very first one
-                                    if ((countState(grid, q, r, 3) > 0 || globalBroodCount === 0) && broodProgressGrid[q][r] >= 0) {
-                                        hq = q; hr = r;
-                                    }
+                                // Brood can be built on any valid Wax cell
+                                if (broodProgressGrid[q][r] >= 0) {
+                                    hq = q; hr = r;
                                 }
                             } else if (state === 0 && wq === -1) {
-                                if (countStructuralNeighbors(grid, q, r) > 0) {
+                                if (countStructuralNeighbors(grid, q, r) >= 2) {
                                     wq = q; wr = r;
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            let priorityOrder = [4, 1, 0]; // Default: Blight, Brood, Wax
-            if (closestBeacon && distToClosestBeacon < BEACON_AOE) {
-                if (closestBeacon.type === 'WAX') priorityOrder = [0, 4, 1];
-                else if (closestBeacon.type === 'BROOD') priorityOrder = [1, 4, 0];
-                else if (closestBeacon.type === 'BLIGHT') priorityOrder = [4, 1, 0]; // Same but strictly enforced by AOE
-            }
-
-            let assigned = false;
-            for (const p of priorityOrder) {
-                if (p === 4 && bq !== -1) {
-                    this.targetQ = bq; this.targetR = br; this.state = 'SEEKING_JOB';
-                    this.targetJobState = grid[bq][br];
-                    workingBeesGrid[bq][br]++; 
-                    assigned = true;
-                    break;
-                } else if (p === 1 && hq !== -1) {
-                    this.targetQ = hq; this.targetR = hr; this.state = 'SEEKING_JOB';
-                    this.targetJobState = grid[hq][hr];
-                    workingBeesGrid[hq][hr]++; 
-                    assigned = true;
-                    break;
-                } else if (p === 0 && wq !== -1) {
-                    this.targetQ = wq; this.targetR = wr; this.state = 'SEEKING_JOB';
-                    this.targetJobState = grid[wq][wr];
-                    workingBeesGrid[wq][wr]++; 
-                    assigned = true;
-                    break;
-                }
-            }
-
-            if (!assigned) {
-                this.vx += (Math.random() - 0.5) * 1.0;
-                this.vy += (Math.random() - 0.5) * 1.0;
-
-                // Beacon bias: only pulls wandering bees within a maximum radius
-                if (closestBeacon && distToClosestBeacon > BEACON_DEADZONE && distToClosestBeacon < BEACON_AOE) {  
-                    const pullStrength = 0.15;
-                    this.vx += ((closestBeacon.x - this.x) / distToClosestBeacon) * pullStrength;
-                    this.vy += ((closestBeacon.y - this.y) / distToClosestBeacon) * pullStrength;
+                let assigned = false;
+                for (const p of priorityOrder) {
+                    if (p === 4 && bq !== -1) {
+                        this.targetQ = bq; this.targetR = br; this.state = 'SEEKING_JOB';
+                        this.targetJobState = grid[bq][br];
+                        workingBeesGrid[bq][br]++; 
+                        assigned = true;
+                        break;
+                    } else if (p === 1 && hq !== -1) {
+                        this.targetQ = hq; this.targetR = hr; this.state = 'SEEKING_JOB';
+                        this.targetJobState = grid[hq][hr];
+                        workingBeesGrid[hq][hr]++; 
+                        assigned = true;
+                        break;
+                    } else if (p === 0 && wq !== -1) {
+                        this.targetQ = wq; this.targetR = wr; this.state = 'SEEKING_JOB';
+                        this.targetJobState = grid[wq][wr];
+                        workingBeesGrid[wq][wr]++; 
+                        assigned = true;
+                        break;
+                    }
                 }
 
-                // Queen bias: pull towards nearest empty Brood cell
-                if (this.isQueen) {
-                    let closestDist = Infinity;
-                    let targetX = -1;
-                    let targetY = -1;
-                    for (let q = 0; q < COLS; q++) {
-                        for (let r = 0; r < ROWS; r++) {
-                            if (grid[q][r] === 3 && broodProgressGrid[q][r] === 0 && workingBeesGrid[q][r] <= 0) {
-                                const pos = hexToPixel(q, r);
-                                const cx = pos.x + (Math.sqrt(3) * HEX_SIZE) / 2;
-                                const cy = pos.y + HEX_SIZE;
-                                const dist = Math.hypot(cx - this.x, cy - this.y);
-                                if (dist < closestDist) {
-                                    closestDist = dist;
-                                    targetX = cx;
-                                    targetY = cy;
+                if (!assigned) {
+                    this.vx += (Math.random() - 0.5) * 1.0;
+                    this.vy += (Math.random() - 0.5) * 1.0;
+
+                    // Queen bias: pull towards nearest empty Brood cell
+                    if (this.isQueen) {
+                        let closestDist = Infinity;
+                        let targetX = -1;
+                        let targetY = -1;
+                        for (let q = 0; q < COLS; q++) {
+                            for (let r = 0; r < ROWS; r++) {
+                                if (grid[q][r] === 3 && broodProgressGrid[q][r] === 0 && workingBeesGrid[q][r] <= 0) {
+                                    const pos = hexToPixel(q, r);
+                                    const cx = pos.x + (Math.sqrt(3) * HEX_SIZE) / 2;
+                                    const cy = pos.y + HEX_SIZE;
+                                    const dist = Math.hypot(cx - this.x, cy - this.y);
+                                    if (dist < closestDist) {
+                                        closestDist = dist;
+                                        targetX = cx;
+                                        targetY = cy;
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (targetX !== -1 && closestDist > 0) {
-                        const pullStrength = 0.2; // Stronger pull to ensure she finds it
-                        this.vx += ((targetX - this.x) / closestDist) * pullStrength;
-                        this.vy += ((targetY - this.y) / closestDist) * pullStrength;
+                        if (targetX !== -1 && closestDist > 0) {
+                            const pullStrength = 0.2; // Stronger pull to ensure she finds it
+                            this.vx += ((targetX - this.x) / closestDist) * pullStrength;
+                            this.vy += ((targetY - this.y) / closestDist) * pullStrength;
+                        }
                     }
                 }
             }
@@ -751,7 +754,7 @@ async function init() {
                 }
             }
         }
-        globalBroodCount = currentBroodCount;
+        // globalBroodCount = currentBroodCount;
 
         // Cooldown Timers
         const dtSeconds = ticker.deltaTime / 60;
@@ -828,11 +831,12 @@ async function init() {
                     
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
-                    else if (state === 4) {
-                        graphics.fill({ color: 0x4B0082 }); 
-                    }
                     
-                    if (state !== 0) {
+                    if (state === 4) {
+                        graphics.fill({ color: 0x4B0082 });
+                        drawHex(graphics, px, py, HEX_SIZE * 0.9 * (blightProgressGrid[q][r] / 100));
+                        graphics.fill();
+                    } else if (state !== 0) {
                         drawHex(graphics, px, py, HEX_SIZE * 0.9);
                         graphics.fill();
                     }
@@ -904,9 +908,8 @@ async function init() {
                 colorHex = 0xFF1493; // Deep Pink / Royal Purple
             } else {
                 const lifePct = Math.max(0, 1 - ageRatio);
-                const rColor = Math.floor(255);
-                const gbColor = Math.floor(255 * lifePct);
-                colorHex = (rColor << 16) | (gbColor << 8) | gbColor;
+                const c = Math.floor(80 + 175 * lifePct); // Fades from White (255) to Dark Grey (80)
+                colorHex = (c << 16) | (c << 8) | c;
                 bee.sprite.tint = colorHex;
             }
 
