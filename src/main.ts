@@ -49,7 +49,7 @@ interface Beacon {
 }
 
 let beacons: Beacon[] = [];
-let chargingBeacon: { x: number; y: number; type: BeaconType; startTime: number } | null = null;
+let chargingBeacon: { x: number; y: number; type: BeaconType; radius: number } | null = null;
 let selectedBeaconType: BeaconType = 'MOVE';
 let waxCooldown = 0;
 let broodCooldown = 0;
@@ -61,7 +61,7 @@ const COOLDOWN_MAX = {
     'BLIGHT': 5
 };
 
-const BEACON_DEADZONE = HEX_SIZE * 2.5; // 60px (halved)
+const BEACON_DEADZONE = HEX_SIZE * 3; 
 
 let GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
 const GRID_HEIGHT = ROWS * 1.5 * HEX_SIZE;
@@ -789,17 +789,24 @@ async function init() {
         if (selectedBeaconType === 'BROOD' && broodCooldown > 0) return;
         if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) return;
 
-        chargingBeacon = { x: localPos.x, y: localPos.y, type: selectedBeaconType, startTime: performance.now() };
+        chargingBeacon = { x: localPos.x, y: localPos.y, type: selectedBeaconType, radius: HEX_SIZE * 3 };
+    });
+
+    app.stage.on('pointermove', (e) => {
+        if (!chargingBeacon) return;
+        
+        const localPos = graphics.toLocal(e.global);
+        const dx = localPos.x - chargingBeacon.x;
+        const dy = localPos.y - chargingBeacon.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        chargingBeacon.radius = Math.max(HEX_SIZE * 3, distance);
     });
 
     const finalizeCharge = () => {
         if (!chargingBeacon) return;
         
-        const timeElapsedSec = (performance.now() - chargingBeacon.startTime) / 1000;
-        const minRadius = HEX_SIZE * 3;
-        const growthRate = HEX_SIZE * 5;
-        const maxRadius = HEX_SIZE * 15;
-        const finalRadius = Math.min(minRadius + timeElapsedSec * growthRate, maxRadius);
+        const finalRadius = chargingBeacon.radius;
 
         // Apply cooldown
         if (chargingBeacon.type === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
@@ -994,7 +1001,7 @@ async function init() {
                     else if (state === 5) graphics.fill({ color: COLOR_WOOD }); // Wood
 
                     if (state === 4) {
-                        let blightScale = 1 - Math.random() * 0.1; // Default random static variation
+                        let blightScale = 1; //1 - Math.random() * 0.1; // Default random static variation
                         if (ENABLE_BLIGHT_PULSE) {
                             const pulseOffset = (q * 17.3) + (r * 23.7);
                             blightScale = 0.95 + Math.sin(time + pulseOffset) * 0.1 + (Math.random() * 0.02 - 0.01);
@@ -1070,11 +1077,7 @@ async function init() {
 
         // Draw Charging Beacon Ring
         if (chargingBeacon) {
-            const timeElapsedSec = (performance.now() - chargingBeacon.startTime) / 1000;
-            const minRadius = HEX_SIZE * 3;
-            const growthRate = HEX_SIZE * 5;
-            const maxRadius = HEX_SIZE * 15;
-            const currentRadius = Math.min(minRadius + timeElapsedSec * growthRate, maxRadius);
+            const currentRadius = chargingBeacon.radius;
             
             let color = 0x00FFFF; // Move
             if (chargingBeacon.type === 'WAX') color = 0xFFD700;
