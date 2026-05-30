@@ -270,17 +270,17 @@ class Bee {
         this.targetR = -1;
         this.targetJobState = -1;
         this.age = 0;
-        this.maxAge = this.isQueen ? Infinity : 3600 + Math.random() * 1200; 
+        this.maxAge = this.isQueen ? Infinity : 60 + Math.random() * 30; // 60 to 90 seconds
 
         this.sprite = new AnimatedSprite(beeFrames);
         this.sprite.anchor.set(0.5);
         this.sprite.animationSpeed = 0.5 + Math.random() * 0.5;
         this.sprite.play();
         if (this.isQueen) {
-            this.sprite.scale.set(0.12);
+            this.sprite.scale.set(0.18);
             this.sprite.tint = 0xFF1493;
         } else {
-            this.sprite.scale.set(0.08);
+            this.sprite.scale.set(0.16);
         }
         beeContainer.addChild(this.sprite);
     }
@@ -393,7 +393,7 @@ class Bee {
             const dist = Math.hypot(dx, dy);
 
             // Park when close enough to the tile, but scatter slightly
-            if (dist < HEX_SIZE * 1.0) {
+            if (dist < HEX_SIZE * 1.2) {
                 this.state = 'WORKING';
                 this.vx = 0;
                 this.vy = 0;
@@ -538,7 +538,7 @@ class Bee {
             let dx = this.x - other.x;
             let dy = this.y - other.y;
             let distSq = dx * dx + dy * dy;
-            const avoidRadius = HEX_SIZE * 0.8; 
+            const avoidRadius = HEX_SIZE * 0.4; 
             if (distSq < avoidRadius * avoidRadius) {
                 if (distSq < 0.0001) { // Perfect stack! Random nudge
                     dx = (Math.random() - 0.5) * 0.1;
@@ -555,7 +555,7 @@ class Bee {
         if (sepCount > 0) {
             const sepLen = Math.hypot(sepX, sepY);
             if (sepLen > 0) {
-                const biasStrength = 0.2; // Weak bias instead of a hard block
+                const biasStrength = 0.05; // Weak bias instead of a hard block
                 this.vx += (sepX / sepLen) * biasStrength;
                 this.vy += (sepY / sepLen) * biasStrength;
             }
@@ -929,8 +929,9 @@ async function init() {
             
             bee.sprite.x = px;
             bee.sprite.y = py;
-            bee.sprite.rotation = bee.rotation;
+            bee.sprite.rotation = bee.rotation + Math.PI / 2;
             
+            /*
             if (bee.state === 'WORKING') {
                 const tPos = hexToPixel(bee.targetQ, bee.targetR);
                 const cx = tPos.x + (Math.sqrt(3) * HEX_SIZE) / 2;
@@ -939,6 +940,7 @@ async function init() {
                 graphics.lineTo(cx, cy);
                 graphics.stroke({ color: colorHex, alpha: 0.4, width: 2 });
             }
+            */
         }
 
         if (completionEl) {
