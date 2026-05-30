@@ -3,18 +3,20 @@ import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Te
 
 const HEX_SIZE = 24;
 const _hexWidth = Math.sqrt(3) * HEX_SIZE;
-const COLS = 30;
+let COLS = 30;
 const ROWS = 20;
 
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
-let grid = createGrid();
-let nextGrid = createGrid();
-let workingBeesGrid = createGrid();
-let workProgressGrid = createGrid(); // 0 to 100
-let blightProgressGrid = createGrid(); // 0 to 100
-let nextBlightProgressGrid = createGrid();
-let broodProgressGrid = createGrid(); // 0 to 100
+let grid: number[][] = [];
+let nextGrid: number[][] = [];
+let workingBeesGrid: number[][] = [];
+let workProgressGrid: number[][] = []; // 0 to 100
+let blightProgressGrid: number[][] = []; // 0 to 100
+let nextBlightProgressGrid: number[][] = [];
+let broodProgressGrid: number[][] = []; // 0 to 100
 let playableCells = 0;
+let playerStartX = 0;
+let playerStartY = 0;
 
 let score = 0;
 // let globalBroodCount = 0;
@@ -49,7 +51,7 @@ const COOLDOWN_MAX = {
 
 const BEACON_DEADZONE = HEX_SIZE * 2.5; // 60px (halved)
 
-const GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
+let GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
 const GRID_HEIGHT = ROWS * 1.5 * HEX_SIZE;
 
 function createGrid(): number[][] {
@@ -66,8 +68,12 @@ function setupGrid() {
         }
     }
 
-    const centerQ = Math.floor(COLS / 2);
-    const centerR = Math.floor(ROWS / 2);
+    // Randomize player start, avoiding the 2-tile wood border (buffer of 4)
+    const startQ = 4 + Math.floor(Math.random() * (COLS - 8));
+    const startR = 4 + Math.floor(Math.random() * (ROWS - 8));
+    const startPos = hexToPixel(startQ, startR);
+    playerStartX = startPos.x;
+    playerStartY = startPos.y;
     
     // Generate Wood Islands (State 5) based on total map size
     const totalCells = COLS * ROWS;
@@ -76,8 +82,8 @@ function setupGrid() {
         let rq = Math.floor(Math.random() * COLS);
         let rr = Math.floor(Math.random() * ROWS);
         
-        // Ensure they spawn at least 10 tiles away from the center so players don't start trapped
-        while (Math.hypot(rq - centerQ, rr - centerR) < 10) {
+        // Ensure they spawn at least 10 tiles away from the start so players don't start trapped
+        while (Math.hypot(rq - startQ, rr - startR) < 10) {
             rq = Math.floor(Math.random() * COLS);
             rr = Math.floor(Math.random() * ROWS);
         }
@@ -108,13 +114,13 @@ function setupGrid() {
     }
 
     // Create initial hive cluster (triangle of 3 cells to satisfy >= 2 neighbor decay rule)
-    grid[centerQ][centerR] = 3; 
-    broodProgressGrid[centerQ][centerR] = 0.01; // Starter egg
+    grid[startQ][startR] = 3; 
+    broodProgressGrid[startQ][startR] = 0.01; // Starter egg
 
-    const dirs = getNeighbors(centerQ, centerR);
+    const dirs = getNeighbors(startQ, startR);
     // dirs[0] and dirs[1] are adjacent to each other on a hex grid
-    grid[centerQ + dirs[0][0]][centerR + dirs[0][1]] = 1; 
-    grid[centerQ + dirs[1][0]][centerR + dirs[1][1]] = 1;
+    grid[startQ + dirs[0][0]][startR + dirs[0][1]] = 1; 
+    grid[startQ + dirs[1][0]][startR + dirs[1][1]] = 1;
 
     // Calculate playable cells (cells that are not rocks)
     playableCells = 0;
@@ -672,17 +678,33 @@ class Bee {
 }
 
 async function init() {
+    const aspectRatio = window.innerWidth / window.innerHeight;
+    const logicalWidth = 720 * aspectRatio;
+    const hexWidth = Math.sqrt(3) * HEX_SIZE;
+    
+    // Compute COLS to cover the logical width
+    COLS = Math.floor(logicalWidth / hexWidth);
+    GRID_WIDTH = COLS * hexWidth;
+    
+    // Initialize Grids
+    grid = createGrid();
+    nextGrid = createGrid();
+    workingBeesGrid = createGrid();
+    workProgressGrid = createGrid();
+    blightProgressGrid = createGrid();
+    nextBlightProgressGrid = createGrid();
+    broodProgressGrid = createGrid();
+
     const app = new Application();
     
-    const hexWidth = Math.sqrt(3) * HEX_SIZE;
     const hexHeight = 2 * HEX_SIZE;
     const totalWidth = hexWidth * COLS + (hexWidth / 2);
     const totalHeight = (hexHeight * 3 / 4) * ROWS + (hexHeight / 4);
 
     await app.init({
-        width: 1280,
+        width: logicalWidth,
         height: 720,
-        backgroundColor: 0x111111,
+        backgroundColor: 0x212121,
         antialias: true,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
@@ -700,7 +722,7 @@ async function init() {
 
     function onResize() {
         app.canvas.style.height = `${window.innerHeight}px`;
-        app.canvas.style.width = `${window.innerHeight * (1280 / 720)}px`;
+        app.canvas.style.width = `${window.innerHeight * (logicalWidth / 720)}px`;
     }
     window.addEventListener('resize', onResize);
     onResize();
@@ -791,9 +813,9 @@ async function init() {
     app.stage.on('pointerupoutside', finalizeCharge);
 
     const bees: Bee[] = [];
-    bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true)); // 1 Queen
+    bees.push(new Bee(playerStartX, playerStartY, true)); // 1 Queen
     for (let i = 0; i < 1; i++) {
-        bees.push(new Bee(GRID_WIDTH / 2 + (Math.random() - 0.5) * 50, GRID_HEIGHT / 2 + (Math.random() - 0.5) * 50, false));
+        bees.push(new Bee(playerStartX + (Math.random() - 0.5) * 50, playerStartY + (Math.random() - 0.5) * 50, false));
     }
 
     const beeCountEl = document.getElementById('beeCountVal');
@@ -828,9 +850,9 @@ async function init() {
         beacons.length = 0;
         selectBeacon('MOVE');
         bees.length = 0; 
-        bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
+        bees.push(new Bee(playerStartX, playerStartY, true));
         for (let i = 0; i < 1; i++) {
-            bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, false));
+            bees.push(new Bee(playerStartX + (Math.random() - 0.5) * 50, playerStartY + (Math.random() - 0.5) * 50, false));
         }
         gameState = 'PLAYING';
     }
@@ -948,22 +970,16 @@ async function init() {
                     
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
-                    else if (state === 5) graphics.fill({ color: 0x8B5A2B }); // Wood (was Rock)
+                    else if (state === 5) graphics.fill({ color: 0x645B4D }); // Wood
 
                     if (state === 4) {
                         graphics.fill({ color: 0x4B0082 });
                         drawHex(graphics, px, py, HEX_SIZE * 0.9 * (blightProgressGrid[q][r] / 100));
                         graphics.fill();
                     } else if (state !== 0) {
-                        drawHex(graphics, px, py, HEX_SIZE * 0.9);
+                        const tileScale = state === 5 ? 1.02 : 0.9;
+                        drawHex(graphics, px, py, HEX_SIZE * tileScale);
                         graphics.fill();
-                        
-                        // Add wood texture details if it's wood
-                        if (state === 5) {
-                            graphics.fill({ color: 0x5C4033 });
-                            drawHex(graphics, px, py, HEX_SIZE * 0.6);
-                            graphics.fill();
-                        }
                     }
 
                     if (state === 3) {
