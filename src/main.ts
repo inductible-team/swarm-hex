@@ -24,7 +24,7 @@ let beeFrames: Texture[] = [];
 let queenFrames: Texture[] = [];
 let beeContainer: Container;
 
-type BeaconType = 'GENERAL' | 'WAX' | 'BROOD' | 'BLIGHT';
+type BeaconType = 'MOVE' | 'WAX' | 'BROOD' | 'BLIGHT';
 interface Beacon {
     x: number;
     y: number;
@@ -34,7 +34,7 @@ interface Beacon {
 }
 
 let beacons: Beacon[] = [];
-let selectedBeaconType: BeaconType = 'GENERAL';
+let selectedBeaconType: BeaconType = 'MOVE';
 let waxCooldown = 0;
 let broodCooldown = 0;
 let blightCooldown = 0;
@@ -446,9 +446,9 @@ class Bee {
             else if (cellState === 4) progressSpeed = 4.0; // Blight Removal: Fastest
             else if (cellState === 3 && this.isQueen) progressSpeed = 3.0; // Queen laying egg: Fast
 
-            // Blight exposure accelerates aging by 4x
+            // Blight exposure accelerates aging
             if (cellState === 4) {
-                this.age += (delta / 60) * 3;
+                this.age += (delta / 60) * 2;
                 blightProgressGrid[this.targetQ][this.targetR] -= delta * progressSpeed;
                 
                 if (blightProgressGrid[this.targetQ][this.targetR] <= 0) {
@@ -633,7 +633,7 @@ class Bee {
             let distSq = dx * dx + dy * dy;
             const avoidRadius = HEX_SIZE * 0.4; 
             if (distSq < avoidRadius * avoidRadius) {
-                if (distSq < 0.0001) { // Perfect stack! Random nudge
+                if (distSq < 0.001) { // Perfect stack! Random nudge
                     dx = (Math.random() - 0.5) * 0.1;
                     dy = (Math.random() - 0.5) * 0.1;
                     distSq = dx * dx + dy * dy;
@@ -719,25 +719,25 @@ async function init() {
     beeContainer = new Container();
     world.addChild(beeContainer);
 
-    const btnGeneral = document.getElementById('btn-general') as HTMLButtonElement;
+    const btnMove = document.getElementById('btn-move') as HTMLButtonElement;
     const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
     const btnBrood = document.getElementById('btn-brood') as HTMLButtonElement;
     const btnBlight = document.getElementById('btn-blight') as HTMLButtonElement;
 
     function selectBeacon(type: BeaconType) {
         selectedBeaconType = type;
-        btnGeneral.classList.remove('active');
+        btnMove.classList.remove('active');
         btnWax.classList.remove('active');
         btnBrood.classList.remove('active');
         btnBlight.classList.remove('active');
 
-        if (type === 'GENERAL') btnGeneral.classList.add('active');
+        if (type === 'MOVE') btnMove.classList.add('active');
         if (type === 'WAX') btnWax.classList.add('active');
         if (type === 'BROOD') btnBrood.classList.add('active');
         if (type === 'BLIGHT') btnBlight.classList.add('active');
     }
 
-    btnGeneral.addEventListener('click', () => selectBeacon('GENERAL'));
+    btnMove.addEventListener('click', () => selectBeacon('MOVE'));
     btnWax.addEventListener('click', () => selectBeacon('WAX'));
     btnBrood.addEventListener('click', () => selectBeacon('BROOD'));
     btnBlight.addEventListener('click', () => selectBeacon('BLIGHT'));
@@ -767,10 +767,10 @@ async function init() {
                 beacons.splice(i, 1);
             }
         }
-        const durationSeconds = selectedBeaconType === 'GENERAL' ? 2 : 10;
+        const durationSeconds = selectedBeaconType === 'MOVE' ? 5 : 10;
         const startLife = durationSeconds;
         beacons.push({ x: localPos.x, y: localPos.y, life: startLife, maxLife: startLife, type: selectedBeaconType });
-        selectBeacon('GENERAL'); // Auto-revert to general
+        selectBeacon('MOVE'); // Auto-revert to move
     });
 
     const bees: Bee[] = [];
@@ -808,7 +808,7 @@ async function init() {
         broodCooldown = 0;
         blightCooldown = 0;
         beacons.length = 0;
-        selectBeacon('GENERAL');
+        selectBeacon('MOVE');
         bees.length = 0; 
         bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true));
         for (let i = 0; i < 1; i++) {
@@ -872,9 +872,9 @@ async function init() {
         btnBlight.disabled = blightCooldown > 0;
 
         // Auto revert UI if trying to select a disabled button
-        if (selectedBeaconType === 'WAX' && waxCooldown > 0) selectBeacon('GENERAL');
-        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) selectBeacon('GENERAL');
-        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) selectBeacon('GENERAL');
+        if (selectedBeaconType === 'WAX' && waxCooldown > 0) selectBeacon('MOVE');
+        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) selectBeacon('MOVE');
+        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) selectBeacon('MOVE');
 
         // Decay beacons
         for (let i = beacons.length - 1; i >= 0; i--) {
@@ -986,7 +986,7 @@ async function init() {
             const pulse = 1 + Math.sin(time) * 0.2;
             const lifeRatio = b.life / b.maxLife;
             
-            let color = 0x00FFFF; // General
+            let color = 0x00FFFF; // Move
             if (b.type === 'WAX') color = 0xFFD700;
             else if (b.type === 'BROOD') color = 0xFFFFFF;
             else if (b.type === 'BLIGHT') color = 0x8A2BE2;

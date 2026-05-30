@@ -139,7 +139,7 @@ canvas {
   color: #fff;
 }
 
-#btn-general.active { border-color: #00FFFF; color: #00FFFF; }
+#btn-move.active { border-color: #00FFFF; color: #00FFFF; }
 #btn-wax.active { border-color: #FFD700; color: #FFD700; }
 #btn-brood.active { border-color: #FFFFFF; color: #FFFFFF; }
 #btn-blight.active { border-color: #8A2BE2; color: #8A2BE2; }
