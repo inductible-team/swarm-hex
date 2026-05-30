@@ -18,9 +18,6 @@ body, html {
 }
 
 #app canvas {
-  height: 100vh;
-  width: auto;
-  aspect-ratio: 1280 / 720;
   flex-shrink: 0;
 }
 

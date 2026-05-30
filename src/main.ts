@@ -1,10 +1,10 @@
 import './style.css';
 import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Texture } from 'pixi.js';
 
-const HEX_SIZE = 16;
+const HEX_SIZE = 24;
 const _hexWidth = Math.sqrt(3) * HEX_SIZE;
-const COLS = 50;
-const ROWS = 32;
+const COLS = 30;
+const ROWS = 20;
 
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
 let grid = createGrid();
@@ -28,6 +28,7 @@ interface Beacon {
     x: number;
     y: number;
     life: number;
+    maxLife: number;
     type: BeaconType;
 }
 
@@ -54,11 +55,11 @@ function createGrid(): number[][] {
 }
 
 function setupGrid() {
-    // 1. Create a solid 3-tile rock border around the playable space
+    // 1. Create a solid 2-tile wood border around the playable space
     for (let q = 0; q < COLS; q++) {
         for (let r = 0; r < ROWS; r++) {
-            if (q < 3 || q >= COLS - 3 || r < 3 || r >= ROWS - 3) {
-                grid[q][r] = 5; // Rock
+            if (q < 2 || q >= COLS - 2 || r < 2 || r >= ROWS - 2) {
+                grid[q][r] = 5; // Wood
             }
         }
     }
@@ -66,9 +67,9 @@ function setupGrid() {
     const centerQ = Math.floor(COLS / 2);
     const centerR = Math.floor(ROWS / 2);
     
-    // Generate Rock Islands (State 5) based on total map size
+    // Generate Wood Islands (State 5) based on total map size
     const totalCells = COLS * ROWS;
-    const numIslands = Math.floor(totalCells / 33) + Math.floor(Math.random() * (totalCells / 50)); 
+    const numIslands = Math.floor(totalCells / 45) + Math.floor(Math.random() * (totalCells / 60)); 
     for (let i = 0; i < numIslands; i++) {
         let rq = Math.floor(Math.random() * COLS);
         let rr = Math.floor(Math.random() * ROWS);
@@ -348,10 +349,10 @@ class Bee {
         this.sprite.animationSpeed = 0.5 + Math.random() * 0.5;
         this.sprite.play();
         if (this.isQueen) {
-            this.sprite.scale.set(0.18);
-            this.sprite.tint = 0xFF1493;
+            this.sprite.scale.set(0.27);
+            this.sprite.tint = 0xFFA500; // Orange
         } else {
-            this.sprite.scale.set(0.16);
+            this.sprite.scale.set(0.24);
         }
         beeContainer.addChild(this.sprite);
     }
@@ -695,6 +696,13 @@ async function init() {
     const sheet = await Assets.load('/atlas.png.json');
     beeFrames = sheet.animations.b;
 
+    function onResize() {
+        app.canvas.style.height = `${window.innerHeight}px`;
+        app.canvas.style.width = `${window.innerHeight * (1280 / 720)}px`;
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
     setupGrid();
 
     const world = new Container();
@@ -707,17 +715,8 @@ async function init() {
     const graphics = new Graphics();
     world.addChild(graphics);
 
-    // Draw debug border for world container bounds
-    const boundsGraphics = new Graphics();
-    boundsGraphics.rect(0, 0, totalWidth, totalHeight);
-    boundsGraphics.stroke({ color: 0xff0000, width: 4 });
-    world.addChild(boundsGraphics);
-
     beeContainer = new Container();
     world.addChild(beeContainer);
-
-    const debugGraphics = new Graphics();
-    app.stage.addChild(debugGraphics);
 
     const btnGeneral = document.getElementById('btn-general') as HTMLButtonElement;
     const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
@@ -767,7 +766,9 @@ async function init() {
                 beacons.splice(i, 1);
             }
         }
-        beacons.push({ x: localPos.x, y: localPos.y, life: 100, type: selectedBeaconType });
+        const durationSeconds = selectedBeaconType === 'GENERAL' ? 2 : 10;
+        const startLife = durationSeconds;
+        beacons.push({ x: localPos.x, y: localPos.y, life: startLife, maxLife: startLife, type: selectedBeaconType });
         selectBeacon('GENERAL'); // Auto-revert to general
     });
 
@@ -818,7 +819,7 @@ async function init() {
     let caTime = 0;
     const CA_INTERVAL = 300; 
 
-    app.ticker.speed = 0.75; 
+    app.ticker.speed = 1; 
 
     app.ticker.add((ticker) => {
         if (gameState !== 'PLAYING') return;
@@ -876,7 +877,7 @@ async function init() {
 
         // Decay beacons
         for (let i = beacons.length - 1; i >= 0; i--) {
-            beacons[i].life -= dtSeconds * 10;
+            beacons[i].life -= dtSeconds;
             if (beacons[i].life <= 0) {
                 beacons.splice(i, 1);
             }
@@ -926,7 +927,7 @@ async function init() {
                     
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
-                    else if (state === 5) graphics.fill({ color: 0x555555 }); // Rock
+                    else if (state === 5) graphics.fill({ color: 0x8B5A2B }); // Wood (was Rock)
 
                     if (state === 4) {
                         graphics.fill({ color: 0x4B0082 });
@@ -936,9 +937,9 @@ async function init() {
                         drawHex(graphics, px, py, HEX_SIZE * 0.9);
                         graphics.fill();
                         
-                        // Add rock texture details if it's rock
+                        // Add wood texture details if it's wood
                         if (state === 5) {
-                            graphics.fill({ color: 0x333333 });
+                            graphics.fill({ color: 0x5C4033 });
                             drawHex(graphics, px, py, HEX_SIZE * 0.6);
                             graphics.fill();
                         }
@@ -982,7 +983,7 @@ async function init() {
         for (const b of beacons) {
             const time = performance.now() * 0.005;
             const pulse = 1 + Math.sin(time) * 0.2;
-            const lifeRatio = b.life / 100;
+            const lifeRatio = b.life / b.maxLife;
             
             let color = 0x00FFFF; // General
             if (b.type === 'WAX') color = 0xFFD700;
@@ -1052,10 +1053,10 @@ async function init() {
         // Draw Queen Health Bar
         for (const bee of bees) {
             if (bee.isQueen && bee.health < bee.maxHealth && bee.health > 0) {
-                const barWidth = 40;
-                const barHeight = 4;
+                const barWidth = 60;
+                const barHeight = 6;
                 const barX = bee.x - barWidth / 2;
-                const barY = bee.y - 30; // Above her head
+                const barY = bee.y - 45; // Above her head
 
                 // Background
                 graphics.fill({ color: 0x222222 });
@@ -1068,16 +1069,6 @@ async function init() {
                 graphics.fill();
             }
         }
-
-        // Draw debug crosshair at exactly screen center
-        debugGraphics.clear();
-        const scx = app.screen.width / 2;
-        const scy = app.screen.height / 2;
-        debugGraphics.moveTo(scx - 20, scy);
-        debugGraphics.lineTo(scx + 20, scy);
-        debugGraphics.moveTo(scx, scy - 20);
-        debugGraphics.lineTo(scx, scy + 20);
-        debugGraphics.stroke({ color: 0x00ff00, width: 2 });
 
         if (completionEl) {
             const pct = Math.floor((aliveCells / playableCells) * 100);
