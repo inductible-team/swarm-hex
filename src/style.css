@@ -17,6 +17,13 @@ body, html {
   align-items: center;
 }
 
+#app canvas {
+  height: 100vh;
+  width: auto;
+  aspect-ratio: 1280 / 720;
+  flex-shrink: 0;
+}
+
 #ui-layer {
   position: absolute;
   top: 20px;

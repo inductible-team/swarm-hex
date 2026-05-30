@@ -2,13 +2,9 @@ import './style.css';
 import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Texture } from 'pixi.js';
 
 const HEX_SIZE = 16;
-const COLS = 50;
 const _hexWidth = Math.sqrt(3) * HEX_SIZE;
-const _hexHeight = 2 * HEX_SIZE;
-const _totalWidth = _hexWidth * COLS + (_hexWidth / 2);
-const _scale = window.innerWidth / _totalWidth;
-const _desiredTotalHeight = window.innerHeight / _scale;
-const ROWS = Math.max(10, Math.ceil((_desiredTotalHeight - _hexHeight / 4) / (_hexHeight * 3 / 4)));
+const COLS = 50;
+const ROWS = 32;
 
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
 let grid = createGrid();
@@ -18,6 +14,7 @@ let workProgressGrid = createGrid(); // 0 to 100
 let blightProgressGrid = createGrid(); // 0 to 100
 let nextBlightProgressGrid = createGrid();
 let broodProgressGrid = createGrid(); // 0 to 100
+let playableCells = 0;
 
 let score = 0;
 // let globalBroodCount = 0;
@@ -57,12 +54,21 @@ function createGrid(): number[][] {
 }
 
 function setupGrid() {
+    // 1. Create a solid 3-tile rock border around the playable space
+    for (let q = 0; q < COLS; q++) {
+        for (let r = 0; r < ROWS; r++) {
+            if (q < 3 || q >= COLS - 3 || r < 3 || r >= ROWS - 3) {
+                grid[q][r] = 5; // Rock
+            }
+        }
+    }
+
     const centerQ = Math.floor(COLS / 2);
     const centerR = Math.floor(ROWS / 2);
     
     // Generate Rock Islands (State 5) based on total map size
     const totalCells = COLS * ROWS;
-    const numIslands = Math.floor(totalCells / 50) + Math.floor(Math.random() * (totalCells / 75)); 
+    const numIslands = Math.floor(totalCells / 33) + Math.floor(Math.random() * (totalCells / 50)); 
     for (let i = 0; i < numIslands; i++) {
         let rq = Math.floor(Math.random() * COLS);
         let rr = Math.floor(Math.random() * ROWS);
@@ -106,6 +112,16 @@ function setupGrid() {
     // dirs[0] and dirs[1] are adjacent to each other on a hex grid
     grid[centerQ + dirs[0][0]][centerR + dirs[0][1]] = 1; 
     grid[centerQ + dirs[1][0]][centerR + dirs[1][1]] = 1;
+
+    // Calculate playable cells (cells that are not rocks)
+    playableCells = 0;
+    for (let q = 0; q < COLS; q++) {
+        for (let r = 0; r < ROWS; r++) {
+            if (grid[q][r] !== 5) {
+                playableCells++;
+            }
+        }
+    }
 }
 
 function getNeighbors(_q: number, r: number) {
@@ -143,8 +159,17 @@ function countState(g: number[][], q: number, r: number, targetState: number): n
 }
 
 function updateCA() {
-    // 1. Random weed spawn (anywhere on map)
-    if (Math.random() < 0.05) {
+    // Count blight cells to enforce 15% cap on random spawns
+    let blightCount = 0;
+    for (let q = 0; q < COLS; q++) {
+        for (let r = 0; r < ROWS; r++) {
+            if (grid[q][r] === 4) blightCount++;
+        }
+    }
+    const totalCells = COLS * ROWS;
+
+    // 1. Random weed spawn (anywhere on map) - capped at 15% blight coverage
+    if (blightCount / totalCells < 0.15 && Math.random() < 0.05) {
         const q = Math.floor(Math.random() * COLS);
         const r = Math.floor(Math.random() * ROWS);
         if (grid[q][r] === 0) {
@@ -653,9 +678,11 @@ async function init() {
     const totalHeight = (hexHeight * 3 / 4) * ROWS + (hexHeight / 4);
 
     await app.init({
-        resizeTo: window,
+        width: 1280,
+        height: 720,
         backgroundColor: 0x111111,
         antialias: true,
+        autoDensity: true,
         resolution: window.devicePixelRatio || 1,
     });
 
@@ -673,23 +700,24 @@ async function init() {
     const world = new Container();
     app.stage.addChild(world);
 
-    function onResize() {
-        const scaleX = window.innerWidth / totalWidth;
-        const scaleY = window.innerHeight / totalHeight;
-        const scale = Math.min(scaleX, scaleY);
-        
-        world.scale.set(scale);
-        world.x = (window.innerWidth - totalWidth * scale) / 2;
-        world.y = (window.innerHeight - totalHeight * scale) / 2;
-    }
-    window.addEventListener('resize', onResize);
-    onResize();
+    // Place the top-left bounds of the world exactly at the center of the screen
+    world.x = app.screen.width / 2 - totalWidth / 2;
+    world.y = app.screen.height / 2 - totalHeight / 2;
 
     const graphics = new Graphics();
     world.addChild(graphics);
 
+    // Draw debug border for world container bounds
+    const boundsGraphics = new Graphics();
+    boundsGraphics.rect(0, 0, totalWidth, totalHeight);
+    boundsGraphics.stroke({ color: 0xff0000, width: 4 });
+    world.addChild(boundsGraphics);
+
     beeContainer = new Container();
     world.addChild(beeContainer);
+
+    const debugGraphics = new Graphics();
+    app.stage.addChild(debugGraphics);
 
     const btnGeneral = document.getElementById('btn-general') as HTMLButtonElement;
     const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
@@ -794,14 +822,6 @@ async function init() {
 
     app.ticker.add((ticker) => {
         if (gameState !== 'PLAYING') return;
-
-        // Handle Camera Zoom to fit Grid
-        const scaleX = window.innerWidth / GRID_WIDTH;
-        const scaleY = window.innerHeight / GRID_HEIGHT;
-        const scale = Math.min(scaleX, scaleY) * 0.95; // 5% margin
-        world.scale.set(scale);
-        world.x = (window.innerWidth - GRID_WIDTH * scale) / 2;
-        world.y = (window.innerHeight - GRID_HEIGHT * scale) / 2;
 
         if (beeCountEl) beeCountEl.innerText = bees.length.toString();
         let currentBroodCount = 0;
@@ -1049,15 +1069,25 @@ async function init() {
             }
         }
 
+        // Draw debug crosshair at exactly screen center
+        debugGraphics.clear();
+        const scx = app.screen.width / 2;
+        const scy = app.screen.height / 2;
+        debugGraphics.moveTo(scx - 20, scy);
+        debugGraphics.lineTo(scx + 20, scy);
+        debugGraphics.moveTo(scx, scy - 20);
+        debugGraphics.lineTo(scx, scy + 20);
+        debugGraphics.stroke({ color: 0x00ff00, width: 2 });
+
         if (completionEl) {
-            const pct = Math.floor((aliveCells / (COLS * ROWS)) * 100);
+            const pct = Math.floor((aliveCells / playableCells) * 100);
             completionEl.innerText = pct.toString();
         }
 
         if (aliveCells === 0) {
             gameState = 'GAME_OVER';
             document.getElementById('game-over')!.style.display = 'flex';
-        } else if (aliveCells >= COLS * ROWS * 0.9) {
+        } else if (aliveCells >= playableCells * 0.9) {
             gameState = 'GAME_WON';
             document.getElementById('game-won')!.style.display = 'flex';
         }
