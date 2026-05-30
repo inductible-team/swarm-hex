@@ -16,6 +16,8 @@ const COLOR_BLIGHT = blightColors[Math.floor(Math.random() * blightColors.length
 const COLOR_QUEEN_EGG = 0x9395D3;
 const COLOR_BLIGHT_REMOVE = 0x111111;
 
+const ENABLE_BLIGHT_PULSE = false; // Toggle for the unsettling pulsing effect
+
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
 let grid: number[][] = [];
 let nextGrid: number[][] = [];
@@ -971,6 +973,7 @@ async function init() {
         let blightCells = 0;
         const offsetX = hexWidth / 2;
         const offsetY = hexHeight / 2;
+        const time = performance.now() * 0.001;
 
         for (let q = 0; q < COLS; q++) {
             for (let r = 0; r < ROWS; r++) {
@@ -991,7 +994,12 @@ async function init() {
                     else if (state === 5) graphics.fill({ color: COLOR_WOOD }); // Wood
 
                     if (state === 4) {
-                        const blightScale = 1 - Math.random() * 0.1; // Add some random variation to blight size
+                        let blightScale = 1 - Math.random() * 0.1; // Default random static variation
+                        if (ENABLE_BLIGHT_PULSE) {
+                            const pulseOffset = (q * 17.3) + (r * 23.7);
+                            blightScale = 0.95 + Math.sin(time + pulseOffset) * 0.1 + (Math.random() * 0.02 - 0.01);
+                        }
+                        
                         graphics.fill({ color: COLOR_BLIGHT });
                         drawHex(graphics, px, py, HEX_SIZE * blightScale * (blightProgressGrid[q][r] / 100));
                         graphics.fill();
