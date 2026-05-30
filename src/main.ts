@@ -3,7 +3,12 @@ import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Te
 
 const HEX_SIZE = 16;
 const COLS = 50;
-const ROWS = 30;
+const _hexWidth = Math.sqrt(3) * HEX_SIZE;
+const _hexHeight = 2 * HEX_SIZE;
+const _totalWidth = _hexWidth * COLS + (_hexWidth / 2);
+const _scale = window.innerWidth / _totalWidth;
+const _desiredTotalHeight = window.innerHeight / _scale;
+const ROWS = Math.max(10, Math.ceil((_desiredTotalHeight - _hexHeight / 4) / (_hexHeight * 3 / 4)));
 
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
 let grid = createGrid();
@@ -55,8 +60,9 @@ function setupGrid() {
     const centerQ = Math.floor(COLS / 2);
     const centerR = Math.floor(ROWS / 2);
     
-    // Generate Rock Islands (State 5)
-    const numIslands = 6 + Math.floor(Math.random() * 5); // 6 to 10 islands
+    // Generate Rock Islands (State 5) based on total map size
+    const totalCells = COLS * ROWS;
+    const numIslands = Math.floor(totalCells / 50) + Math.floor(Math.random() * (totalCells / 75)); 
     for (let i = 0; i < numIslands; i++) {
         let rq = Math.floor(Math.random() * COLS);
         let rr = Math.floor(Math.random() * ROWS);
@@ -67,20 +73,27 @@ function setupGrid() {
             rr = Math.floor(Math.random() * ROWS);
         }
 
-        // Create a cluster of rocks
-        const clusterSize = 3 + Math.floor(Math.random() * 6); // 3 to 8 rocks per island
-        grid[rq][rr] = 5;
-        let currentQ = rq;
-        let currentR = rr;
-        for (let j = 0; j < clusterSize - 1; j++) {
-            const dirs = getNeighbors(currentQ, currentR);
-            const [dq, dr] = dirs[Math.floor(Math.random() * dirs.length)];
-            const nq = currentQ + dq;
-            const nr = currentR + dr;
-            if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
-                grid[nq][nr] = 5;
-                currentQ = nq;
-                currentR = nr;
+        // Create a blob-like rock island
+        const hexRadius = 1 + Math.random() * 2.5; 
+        const pixelRadius = hexRadius * _hexWidth;
+        const searchRange = Math.ceil(hexRadius) + 1;
+        const centerPos = hexToPixel(rq, rr);
+
+        for (let dq = -searchRange; dq <= searchRange; dq++) {
+            for (let dr = -searchRange; dr <= searchRange; dr++) {
+                const nq = rq + dq;
+                const nr = rr + dr;
+                if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
+                    // Calculate pixel distance to allow true circular growth regardless of hex offset math
+                    const nPos = hexToPixel(nq, nr);
+                    const dist = Math.hypot(nPos.x - centerPos.x, nPos.y - centerPos.y);
+                    
+                    // Add noise so the blob is irregular and organic
+                    const noisyRadius = pixelRadius * (0.6 + Math.random() * 0.5);
+                    if (dist <= noisyRadius) {
+                        grid[nq][nr] = 5;
+                    }
+                }
             }
         }
     }
@@ -640,8 +653,7 @@ async function init() {
     const totalHeight = (hexHeight * 3 / 4) * ROWS + (hexHeight / 4);
 
     await app.init({
-        width: totalWidth,
-        height: totalHeight,
+        resizeTo: window,
         backgroundColor: 0x111111,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
@@ -660,6 +672,18 @@ async function init() {
 
     const world = new Container();
     app.stage.addChild(world);
+
+    function onResize() {
+        const scaleX = window.innerWidth / totalWidth;
+        const scaleY = window.innerHeight / totalHeight;
+        const scale = Math.min(scaleX, scaleY);
+        
+        world.scale.set(scale);
+        world.x = (window.innerWidth - totalWidth * scale) / 2;
+        world.y = (window.innerHeight - totalHeight * scale) / 2;
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
 
     const graphics = new Graphics();
     world.addChild(graphics);
