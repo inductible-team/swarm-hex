@@ -55,6 +55,36 @@ function setupGrid() {
     const centerQ = Math.floor(COLS / 2);
     const centerR = Math.floor(ROWS / 2);
     
+    // Generate Rock Islands (State 5)
+    const numIslands = 6 + Math.floor(Math.random() * 5); // 6 to 10 islands
+    for (let i = 0; i < numIslands; i++) {
+        let rq = Math.floor(Math.random() * COLS);
+        let rr = Math.floor(Math.random() * ROWS);
+        
+        // Ensure they spawn at least 10 tiles away from the center so players don't start trapped
+        while (Math.hypot(rq - centerQ, rr - centerR) < 10) {
+            rq = Math.floor(Math.random() * COLS);
+            rr = Math.floor(Math.random() * ROWS);
+        }
+
+        // Create a cluster of rocks
+        const clusterSize = 3 + Math.floor(Math.random() * 6); // 3 to 8 rocks per island
+        grid[rq][rr] = 5;
+        let currentQ = rq;
+        let currentR = rr;
+        for (let j = 0; j < clusterSize - 1; j++) {
+            const dirs = getNeighbors(currentQ, currentR);
+            const [dq, dr] = dirs[Math.floor(Math.random() * dirs.length)];
+            const nq = currentQ + dq;
+            const nr = currentR + dr;
+            if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
+                grid[nq][nr] = 5;
+                currentQ = nq;
+                currentR = nr;
+            }
+        }
+    }
+
     // Create initial hive cluster (triangle of 3 cells to satisfy >= 2 neighbor decay rule)
     grid[centerQ][centerR] = 3; 
     broodProgressGrid[centerQ][centerR] = 0.01; // Starter egg
@@ -80,7 +110,7 @@ function countStructuralNeighbors(g: number[][], q: number, r: number): number {
         const nq = q + dq;
         const nr = r + dr;
         if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
-            if (g[nq][nr] === 1 || g[nq][nr] === 3) sum++;
+            if (g[nq][nr] === 1 || g[nq][nr] === 3 || g[nq][nr] === 5) sum++;
         }
     }
     return sum;
@@ -159,7 +189,7 @@ function updateCA() {
                     const nr = r + dr;
                     
                     if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
-                        if (nextGrid[nq][nr] !== 4 && workingBeesGrid[nq][nr] === 0) {
+                        if (nextGrid[nq][nr] !== 4 && nextGrid[nq][nr] !== 5 && workingBeesGrid[nq][nr] === 0) {
                             let spreadSpeed = 4;
                             if (grid[nq][nr] === 1) spreadSpeed = 2; // Grows twice as slow on Wax cells
                             
@@ -852,7 +882,8 @@ async function init() {
                     
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
-                    
+                    else if (state === 5) graphics.fill({ color: 0x555555 }); // Rock
+
                     if (state === 4) {
                         graphics.fill({ color: 0x4B0082 });
                         drawHex(graphics, px, py, HEX_SIZE * 0.9 * (blightProgressGrid[q][r] / 100));
@@ -860,6 +891,13 @@ async function init() {
                     } else if (state !== 0) {
                         drawHex(graphics, px, py, HEX_SIZE * 0.9);
                         graphics.fill();
+                        
+                        // Add rock texture details if it's rock
+                        if (state === 5) {
+                            graphics.fill({ color: 0x333333 });
+                            drawHex(graphics, px, py, HEX_SIZE * 0.6);
+                            graphics.fill();
+                        }
                     }
 
                     if (state === 3) {
