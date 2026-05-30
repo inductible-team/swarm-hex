@@ -4,7 +4,7 @@ import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Te
 const HEX_SIZE = 24;
 const _hexWidth = Math.sqrt(3) * HEX_SIZE;
 let COLS = 30;
-const ROWS = 20;
+const ROWS = 22;
 
 // States: 0=Empty, 1=Wax, 3=Brood, 4=Blight
 let grid: number[][] = [];
@@ -59,25 +59,25 @@ function createGrid(): number[][] {
 }
 
 function setupGrid() {
-    // 1. Create a solid 2-tile wood border around the playable space
+    // 1. Create a solid 3-tile wood border (2 visible, 1 for screen bleed)
     for (let q = 0; q < COLS; q++) {
         for (let r = 0; r < ROWS; r++) {
-            if (q < 2 || q >= COLS - 2 || r < 2 || r >= ROWS - 2) {
+            if (q < 3 || q >= COLS - 3 || r < 3 || r >= ROWS - 3) {
                 grid[q][r] = 5; // Wood
             }
         }
     }
 
-    // Randomize player start, avoiding the 2-tile wood border (buffer of 4)
-    const startQ = 4 + Math.floor(Math.random() * (COLS - 8));
-    const startR = 4 + Math.floor(Math.random() * (ROWS - 8));
+    // Randomize player start, avoiding the 3-tile wood border (buffer of 5)
+    const startQ = 5 + Math.floor(Math.random() * (COLS - 10));
+    const startR = 5 + Math.floor(Math.random() * (ROWS - 10));
     const startPos = hexToPixel(startQ, startR);
     playerStartX = startPos.x;
     playerStartY = startPos.y;
     
     // Generate Wood Islands (State 5) based on total map size
     const totalCells = COLS * ROWS;
-    const numIslands = Math.floor(totalCells / 45) + Math.floor(Math.random() * (totalCells / 60)); 
+    const numIslands = Math.floor(totalCells / 90) + Math.floor(Math.random() * (totalCells / 120)); 
     for (let i = 0; i < numIslands; i++) {
         let rq = Math.floor(Math.random() * COLS);
         let rr = Math.floor(Math.random() * ROWS);
@@ -682,8 +682,8 @@ async function init() {
     const logicalWidth = 720 * aspectRatio;
     const hexWidth = Math.sqrt(3) * HEX_SIZE;
     
-    // Compute COLS to cover the logical width
-    COLS = Math.floor(logicalWidth / hexWidth);
+    // Compute COLS to cover the logical width, +2 for screen bleed
+    COLS = Math.floor(logicalWidth / hexWidth) + 2;
     GRID_WIDTH = COLS * hexWidth;
     
     // Initialize Grids
@@ -704,7 +704,7 @@ async function init() {
     await app.init({
         width: logicalWidth,
         height: 720,
-        backgroundColor: 0x212121,
+        backgroundColor: 0x111111,
         antialias: true,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
@@ -970,14 +970,14 @@ async function init() {
                     
                     if (state === 1) graphics.fill({ color: 0x8B8000 }); 
                     else if (state === 3) graphics.fill({ color: 0xFFD700 }); 
-                    else if (state === 5) graphics.fill({ color: 0x645B4D }); // Wood
+                    else if (state === 5) graphics.fill({ color: 0x353535 }); // Wood
 
                     if (state === 4) {
                         graphics.fill({ color: 0x4B0082 });
                         drawHex(graphics, px, py, HEX_SIZE * 0.9 * (blightProgressGrid[q][r] / 100));
                         graphics.fill();
                     } else if (state !== 0) {
-                        const tileScale = state === 5 ? 1.02 : 0.9;
+                        const tileScale = state === 5 ? 1.1 : 0.9;
                         drawHex(graphics, px, py, HEX_SIZE * tileScale);
                         graphics.fill();
                     }
