@@ -30,22 +30,23 @@ interface Beacon {
     y: number;
     life: number;
     maxLife: number;
+    aoeRadius: number;
     type: BeaconType;
 }
 
 let beacons: Beacon[] = [];
+let chargingBeacon: { x: number; y: number; type: BeaconType; startTime: number } | null = null;
 let selectedBeaconType: BeaconType = 'MOVE';
 let waxCooldown = 0;
 let broodCooldown = 0;
 let blightCooldown = 0;
 
 const COOLDOWN_MAX = {
-    'WAX': 10,
-    'BROOD': 15,
-    'BLIGHT': 20
+    'WAX': 5,
+    'BROOD': 5,
+    'BLIGHT': 5
 };
 
-const BEACON_AOE = HEX_SIZE * 10; // 160px
 const BEACON_DEADZONE = HEX_SIZE * 2.5; // 60px (halved)
 
 const GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
@@ -408,7 +409,7 @@ class Bee {
                     priorityOrder = [4];
                     if (this.targetJobState !== 4 && this.targetJobState !== -1) shouldAbortCurrentJob = true;
                 }
-            } else if (distToClosestBeacon <= BEACON_AOE) {
+            } else if (distToClosestBeacon <= closestBeacon.aoeRadius) {
                 // Outer zone: drop jobs and move directly to beacon
                 shouldMoveToBeacon = true;
             }
@@ -749,29 +750,45 @@ async function init() {
         
         const localPos = graphics.toLocal(e.global);
         
-        if (gameState !== 'PLAYING') return;
-        
         // Check cooldown
         if (selectedBeaconType === 'WAX' && waxCooldown > 0) return;
         if (selectedBeaconType === 'BROOD' && broodCooldown > 0) return;
         if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) return;
 
+        chargingBeacon = { x: localPos.x, y: localPos.y, type: selectedBeaconType, startTime: performance.now() };
+    });
+
+    const finalizeCharge = () => {
+        if (!chargingBeacon) return;
+        
+        const timeElapsedSec = (performance.now() - chargingBeacon.startTime) / 1000;
+        const minRadius = HEX_SIZE * 3;
+        const growthRate = HEX_SIZE * 5;
+        const maxRadius = HEX_SIZE * 15;
+        const finalRadius = Math.min(minRadius + timeElapsedSec * growthRate, maxRadius);
+
         // Apply cooldown
-        if (selectedBeaconType === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
-        if (selectedBeaconType === 'BROOD') broodCooldown = COOLDOWN_MAX.BROOD;
-        if (selectedBeaconType === 'BLIGHT') blightCooldown = COOLDOWN_MAX.BLIGHT;
+        if (chargingBeacon.type === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
+        if (chargingBeacon.type === 'BROOD') broodCooldown = COOLDOWN_MAX.BROOD;
+        if (chargingBeacon.type === 'BLIGHT') blightCooldown = COOLDOWN_MAX.BLIGHT;
 
         // Remove any existing beacon of the same type
         for (let i = beacons.length - 1; i >= 0; i--) {
-            if (beacons[i].type === selectedBeaconType) {
+            if (beacons[i].type === chargingBeacon.type) {
                 beacons.splice(i, 1);
             }
         }
-        const durationSeconds = selectedBeaconType === 'MOVE' ? 5 : 10;
+
+        const durationSeconds = chargingBeacon.type === 'MOVE' ? 5 : 10;
         const startLife = durationSeconds;
-        beacons.push({ x: localPos.x, y: localPos.y, life: startLife, maxLife: startLife, type: selectedBeaconType });
+        beacons.push({ x: chargingBeacon.x, y: chargingBeacon.y, life: startLife, maxLife: startLife, aoeRadius: finalRadius, type: chargingBeacon.type });
+        
+        chargingBeacon = null;
         selectBeacon('MOVE'); // Auto-revert to move
-    });
+    };
+
+    app.stage.on('pointerup', finalizeCharge);
+    app.stage.on('pointerupoutside', finalizeCharge);
 
     const bees: Bee[] = [];
     bees.push(new Bee(GRID_WIDTH / 2, GRID_HEIGHT / 2, true)); // 1 Queen
@@ -992,7 +1009,7 @@ async function init() {
             else if (b.type === 'BLIGHT') color = 0x8A2BE2;
 
             // Draw Area of Effect radius
-            graphics.circle(b.x, b.y, BEACON_AOE);
+            graphics.circle(b.x, b.y, b.aoeRadius);
             graphics.stroke({ color: color, alpha: 0.1 * lifeRatio, width: 1 });
 
             // Draw core beacon
@@ -1000,6 +1017,25 @@ async function init() {
             graphics.stroke({ color: color, alpha: 0.5 * lifeRatio, width: 2 });
             graphics.circle(b.x, b.y, 4);
             graphics.fill({ color: color, alpha: lifeRatio });
+        }
+
+        // Draw Charging Beacon Ring
+        if (chargingBeacon) {
+            const timeElapsedSec = (performance.now() - chargingBeacon.startTime) / 1000;
+            const minRadius = HEX_SIZE * 3;
+            const growthRate = HEX_SIZE * 5;
+            const maxRadius = HEX_SIZE * 15;
+            const currentRadius = Math.min(minRadius + timeElapsedSec * growthRate, maxRadius);
+            
+            let color = 0x00FFFF; // Move
+            if (chargingBeacon.type === 'WAX') color = 0xFFD700;
+            else if (chargingBeacon.type === 'BROOD') color = 0xFFFFFF;
+            else if (chargingBeacon.type === 'BLIGHT') color = 0x8A2BE2;
+
+            graphics.circle(chargingBeacon.x, chargingBeacon.y, currentRadius);
+            graphics.stroke({ color: color, alpha: 0.3, width: 2 });
+            graphics.circle(chargingBeacon.x, chargingBeacon.y, BEACON_DEADZONE);
+            graphics.stroke({ color: color, alpha: 0.6, width: 2 });
         }
 
         for (const bee of bees) {
