@@ -2,9 +2,9 @@
 <data version="1.0">
     <struct type="Settings">
         <key>fileFormatVersion</key>
-        <int>4</int>
+        <int>6</int>
         <key>texturePackerVersion</key>
-        <string>5.2.0</string>
+        <string>7.1.0</string>
         <key>autoSDSettings</key>
         <array>
             <struct type="AutoSDSettings">
@@ -37,24 +37,18 @@
         <filename>../../public/atlas.png</filename>
         <key>flipPVR</key>
         <false/>
-        <key>pvrCompressionQuality</key>
-        <enum type="SettingsBase::PvrCompressionQuality">PVR_QUALITY_NORMAL</enum>
-        <key>atfCompressData</key>
-        <false/>
-        <key>mipMapMinSize</key>
-        <uint>32768</uint>
-        <key>etc1CompressionQuality</key>
-        <enum type="SettingsBase::Etc1CompressionQuality">ETC1_QUALITY_LOW_PERCEPTUAL</enum>
-        <key>etc2CompressionQuality</key>
-        <enum type="SettingsBase::Etc2CompressionQuality">ETC2_QUALITY_LOW_PERCEPTUAL</enum>
+        <key>pvrQualityLevel</key>
+        <uint>3</uint>
+        <key>astcQualityLevel</key>
+        <uint>2</uint>
+        <key>basisUniversalQualityLevel</key>
+        <uint>2</uint>
+        <key>etc1QualityLevel</key>
+        <uint>40</uint>
+        <key>etc2QualityLevel</key>
+        <uint>40</uint>
         <key>dxtCompressionMode</key>
         <enum type="SettingsBase::DxtCompressionMode">DXT_PERCEPTUAL</enum>
-        <key>jxrColorFormat</key>
-        <enum type="SettingsBase::JpegXrColorMode">JXR_YUV444</enum>
-        <key>jxrTrimFlexBits</key>
-        <uint>0</uint>
-        <key>jxrCompressionLevel</key>
-        <uint>0</uint>
         <key>ditherType</key>
         <enum type="SettingsBase::DitherType">NearestNeighbour</enum>
         <key>backgroundColor</key>
@@ -78,8 +72,6 @@
         <key>webpQualityLevel</key>
         <uint>101</uint>
         <key>textureSubPath</key>
-        <string></string>
-        <key>atfFormats</key>
         <string></string>
         <key>textureFormat</key>
         <enum type="SettingsBase::TextureFormat">png</enum>
@@ -135,8 +127,8 @@
                 <filename>../../public/atlas.png.json</filename>
             </struct>
         </map>
-        <key>multiPack</key>
-        <false/>
+        <key>multiPackMode</key>
+        <enum type="SettingsBase::MultiPackMode">MultiPackOff</enum>
         <key>forceIdenticalLayout</key>
         <false/>
         <key>outputFormat</key>
@@ -181,12 +173,12 @@
         </struct>
         <key>individualSpriteSettings</key>
         <map type="IndividualSpriteSettingsMap">
-            <key type="filename">../../public/b1.png</key>
+            <key type="filename">b1.png</key>
             <struct type="IndividualSpriteSettings">
                 <key>pivotPoint</key>
                 <point_f>0,0</point_f>
                 <key>spriteScale</key>
-                <double>1</double>
+                <double>0.2</double>
                 <key>scale9Enabled</key>
                 <false/>
                 <key>scale9Borders</key>
@@ -196,27 +188,65 @@
                 <key>scale9FromFile</key>
                 <false/>
             </struct>
-            <key type="filename">../../public/b2.png</key>
+            <key type="filename">b2.png</key>
             <struct type="IndividualSpriteSettings">
                 <key>pivotPoint</key>
                 <point_f>0,0</point_f>
                 <key>spriteScale</key>
-                <double>1</double>
+                <double>0.2</double>
                 <key>scale9Enabled</key>
                 <false/>
                 <key>scale9Borders</key>
                 <rect>137,122,273,245</rect>
                 <key>scale9Paddings</key>
                 <rect>137,122,273,245</rect>
+                <key>scale9FromFile</key>
+                <false/>
+            </struct>
+            <key type="filename">q1.png</key>
+            <struct type="IndividualSpriteSettings">
+                <key>pivotPoint</key>
+                <point_f>0,0</point_f>
+                <key>spriteScale</key>
+                <double>0.2</double>
+                <key>scale9Enabled</key>
+                <false/>
+                <key>scale9Borders</key>
+                <rect>162,146,325,292</rect>
+                <key>scale9Paddings</key>
+                <rect>162,146,325,292</rect>
+                <key>scale9FromFile</key>
+                <false/>
+            </struct>
+            <key type="filename">q2.png</key>
+            <struct type="IndividualSpriteSettings">
+                <key>pivotPoint</key>
+                <point_f>0,0</point_f>
+                <key>spriteScale</key>
+                <double>0.2</double>
+                <key>scale9Enabled</key>
+                <false/>
+                <key>scale9Borders</key>
+                <rect>146,146,291,293</rect>
+                <key>scale9Paddings</key>
+                <rect>146,146,291,293</rect>
                 <key>scale9FromFile</key>
                 <false/>
             </struct>
         </map>
-        <key>fileList</key>
-        <array>
-            <filename>../../public/b1.png</filename>
-            <filename>../../public/b2.png</filename>
-        </array>
+        <key>fileLists</key>
+        <map type="SpriteSheetMap">
+            <key>default</key>
+            <struct type="SpriteSheet">
+                <key>files</key>
+                <array>
+                    <filename>b1.png</filename>
+                    <filename>b2.png</filename>
+                    <filename>q1.png</filename>
+                    <filename>q2.png</filename>
+                </array>
+            </struct>
+        </map>
         <key>ignoreFileList</key>
         <array/>
         <key>replaceList</key>

@@ -21,6 +21,7 @@ let score = 0;
 let gameState: 'PLAYING' | 'GAME_OVER' | 'GAME_WON' = 'PLAYING';
 
 let beeFrames: Texture[] = [];
+let queenFrames: Texture[] = [];
 let beeContainer: Container;
 
 type BeaconType = 'GENERAL' | 'WAX' | 'BROOD' | 'BLIGHT';
@@ -45,7 +46,7 @@ const COOLDOWN_MAX = {
 };
 
 const BEACON_AOE = HEX_SIZE * 10; // 160px
-const BEACON_DEADZONE = HEX_SIZE * 5; // 80px
+const BEACON_DEADZONE = HEX_SIZE * 2.5; // 60px (halved)
 
 const GRID_WIDTH = COLS * Math.sqrt(3) * HEX_SIZE;
 const GRID_HEIGHT = ROWS * 1.5 * HEX_SIZE;
@@ -344,13 +345,12 @@ class Bee {
         this.age = 0;
         this.maxAge = this.isQueen ? Infinity : 45 + Math.random() * 10; // ~50s (1.5x incubation time)
 
-        this.sprite = new AnimatedSprite(beeFrames);
+        this.sprite = new AnimatedSprite(isQueen ? queenFrames : beeFrames);
         this.sprite.anchor.set(0.5);
         this.sprite.animationSpeed = 0.5 + Math.random() * 0.5;
         this.sprite.play();
         if (this.isQueen) {
             this.sprite.scale.set(0.27);
-            this.sprite.tint = 0xFFA500; // Orange
         } else {
             this.sprite.scale.set(0.24);
         }
@@ -695,6 +695,7 @@ async function init() {
 
     const sheet = await Assets.load('/atlas.png.json');
     beeFrames = sheet.animations.b;
+    queenFrames = sheet.animations.q;
 
     function onResize() {
         app.canvas.style.height = `${window.innerHeight}px`;
@@ -817,7 +818,7 @@ async function init() {
     }
 
     let caTime = 0;
-    const CA_INTERVAL = 300; 
+    const CA_INTERVAL = 500; 
 
     app.ticker.speed = 1; 
 
