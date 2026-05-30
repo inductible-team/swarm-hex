@@ -8,11 +8,15 @@
   </head>
   <body>
     <div id="ui-layer">
-      <div id="tug-of-war">
+      <div class="stat" style="display: flex; align-items: center; gap: 8px; justify-content: flex-start; flex: 1;">
+        <img src="/b1.png" alt="Swarm" style="width: 24px; height: 24px;">
+        <span id="beeCountVal">10</span>
+      </div>
+      <div id="tug-of-war" style="flex: 0 0 auto;">
         <div id="tug-swarm"></div>
         <div id="tug-blight"></div>
       </div>
-      <div class="stat">Swarm Size: <span id="beeCountVal">10</span></div>
+      <div style="flex: 1;"></div>
     </div>
     <div id="game-over" style="display: none;">
       <h1>The Hive Has Fallen</h1>
@@ -25,9 +29,9 @@
     
     <div id="beacon-toolbar">
       <button id="btn-move" class="beacon-btn active">Move</button>
-      <button id="btn-wax" class="beacon-btn">Expand Hive <span class="cd" id="cd-wax"></span></button>
-      <button id="btn-brood" class="beacon-btn">Prepare Brood <span class="cd" id="cd-brood"></span></button>
-      <button id="btn-blight" class="beacon-btn">Clear Blight <span class="cd" id="cd-blight"></span></button>
+      <button id="btn-blight" class="beacon-btn">Clear <span class="cd" id="cd-blight"></span></button>
+      <button id="btn-wax" class="beacon-btn">Comb <span class="cd" id="cd-wax"></span></button>
+      <button id="btn-brood" class="beacon-btn">Brood <span class="cd" id="cd-brood"></span></button>
     </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>

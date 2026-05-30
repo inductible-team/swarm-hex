@@ -634,7 +634,7 @@ class Bee {
             let distSq = dx * dx + dy * dy;
             const avoidRadius = HEX_SIZE * 0.4; 
             if (distSq < avoidRadius * avoidRadius) {
-                if (distSq < 0.001) { // Perfect stack! Random nudge
+                if (distSq < 0.0001) { // Perfect stack! Random nudge
                     dx = (Math.random() - 0.5) * 0.1;
                     dy = (Math.random() - 0.5) * 0.1;
                     distSq = dx * dx + dy * dy;
@@ -1008,7 +1008,7 @@ async function init() {
             
             let color = 0x00FFFF; // Move
             if (b.type === 'WAX') color = 0xFFD700;
-            else if (b.type === 'BROOD') color = 0xFFFFFF;
+            else if (b.type === 'BROOD') color = 0xFF1493;
             else if (b.type === 'BLIGHT') color = 0x8A2BE2;
 
             // Draw Area of Effect radius
@@ -1032,7 +1032,7 @@ async function init() {
             
             let color = 0x00FFFF; // Move
             if (chargingBeacon.type === 'WAX') color = 0xFFD700;
-            else if (chargingBeacon.type === 'BROOD') color = 0xFFFFFF;
+            else if (chargingBeacon.type === 'BROOD') color = 0xFF1493;
             else if (chargingBeacon.type === 'BLIGHT') color = 0x8A2BE2;
 
             graphics.circle(chargingBeacon.x, chargingBeacon.y, currentRadius);
