@@ -1,5 +1,5 @@
 import './style.css';
-import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Texture } from 'pixi.js';
+import { Application, Graphics, Rectangle, Container, AnimatedSprite, Assets, Texture, Text } from 'pixi.js';
 
 const HEX_SIZE = 24;
 const _hexWidth = Math.sqrt(3) * HEX_SIZE;
@@ -9,8 +9,8 @@ const ROWS = 22;
 const blightColors = [0xF75590, 0x697A21, 0x2DD881, 0x6FEDB7];
 const woodColors = [0x272838, 0x3A2E4D, 0x1F1B2E, 0x4B3C5E];
 
-const COLOR_WAX = 0xF4FEC1;
-const COLOR_BROOD = 0xFBD87F;
+const COLOR_WAX = 0xFBD87F;
+const COLOR_BROOD = 0xEAC435;
 const COLOR_WOOD = woodColors[Math.floor(Math.random() * woodColors.length)];
 const COLOR_BLIGHT = blightColors[Math.floor(Math.random() * blightColors.length)];
 const COLOR_QUEEN_EGG = 0x9395D3;
@@ -51,15 +51,7 @@ interface Beacon {
 let beacons: Beacon[] = [];
 let chargingBeacon: { x: number; y: number; type: BeaconType; radius: number } | null = null;
 let selectedBeaconType: BeaconType = 'MOVE';
-let waxCooldown = 0;
-let broodCooldown = 0;
-let blightCooldown = 0;
 
-const COOLDOWN_MAX = {
-    'WAX': 5,
-    'BROOD': 5,
-    'BLIGHT': 5
-};
 
 const BEACON_DEADZONE = HEX_SIZE * 3; 
 
@@ -754,42 +746,71 @@ async function init() {
     beeContainer = new Container();
     world.addChild(beeContainer);
 
-    const btnMove = document.getElementById('btn-move') as HTMLButtonElement;
-    const btnWax = document.getElementById('btn-wax') as HTMLButtonElement;
-    const btnBrood = document.getElementById('btn-brood') as HTMLButtonElement;
-    const btnBlight = document.getElementById('btn-blight') as HTMLButtonElement;
 
-    function selectBeacon(type: BeaconType) {
-        selectedBeaconType = type;
-        btnMove.classList.remove('active');
-        btnWax.classList.remove('active');
-        btnBrood.classList.remove('active');
-        btnBlight.classList.remove('active');
-
-        if (type === 'MOVE') btnMove.classList.add('active');
-        if (type === 'WAX') btnWax.classList.add('active');
-        if (type === 'BROOD') btnBrood.classList.add('active');
-        if (type === 'BLIGHT') btnBlight.classList.add('active');
-    }
-
-    btnMove.addEventListener('click', () => selectBeacon('MOVE'));
-    btnWax.addEventListener('click', () => selectBeacon('WAX'));
-    btnBrood.addEventListener('click', () => selectBeacon('BROOD'));
-    btnBlight.addEventListener('click', () => selectBeacon('BLIGHT'));
 
     app.stage.eventMode = 'static';
     app.stage.hitArea = new Rectangle(0, 0, app.screen.width, app.screen.height);
+
+    const chargingText = new Text({ text: '', style: { fill: 0xFFFFFF, fontSize: 16, fontWeight: 'bold' } });
+    chargingText.visible = false;
+    chargingText.anchor.set(0.5, 1.5); // Position slightly above the cursor
+    app.stage.addChild(chargingText);
     app.stage.on('pointerdown', (e) => {
         if (gameState !== 'PLAYING') return;
         
         const localPos = graphics.toLocal(e.global);
+        const hexPos = getHexFromPixel(localPos.x, localPos.y);
         
-        // Check cooldown
-        if (selectedBeaconType === 'WAX' && waxCooldown > 0) return;
-        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) return;
-        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) return;
+        let determinedType: BeaconType = 'MOVE';
+
+        if (hexPos.q >= 0 && hexPos.q < COLS && hexPos.r >= 0 && hexPos.r < ROWS) {
+            const state = grid[hexPos.q][hexPos.r];
+            const blightProgress = blightProgressGrid[hexPos.q][hexPos.r];
+            
+            if (state === 0) {
+                // Empty tile logic
+                // Check if adjacent to wax (state === 1) or brood (state === 3)
+                const dirs = getNeighbors(hexPos.q, hexPos.r);
+                let touchesWax = false;
+                for (let i = 0; i < 6; i++) {
+                    const [dq, dr] = dirs[i];
+                    const nq = hexPos.q + dq;
+                    const nr = hexPos.r + dr;
+                    if (nq >= 0 && nq < COLS && nr >= 0 && nr < ROWS) {
+                        if (grid[nq][nr] === 1 || grid[nq][nr] === 3) { 
+                            touchesWax = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (touchesWax) determinedType = 'WAX';
+                else determinedType = 'MOVE';
+            } else if (state === 4) {
+                // Blight
+                if (blightProgress >= 100) determinedType = 'BLIGHT';
+                else determinedType = 'MOVE'; // immature blight
+            } else if (state === 1) {
+                determinedType = 'BROOD';
+            } else if (state === 5 || state === 3) {
+                determinedType = 'MOVE';
+            }
+        }
+        
+        selectedBeaconType = determinedType;
+
+
+        // Max 1 active beacon globally - remove old when starting new charge
+        beacons.length = 0;
 
         chargingBeacon = { x: localPos.x, y: localPos.y, type: selectedBeaconType, radius: HEX_SIZE * 3 };
+
+        chargingText.visible = true;
+        chargingText.position.set(e.global.x, e.global.y);
+        if (selectedBeaconType === 'MOVE') chargingText.text = 'Move To';
+        else if (selectedBeaconType === 'WAX') chargingText.text = 'Build Comb';
+        else if (selectedBeaconType === 'BROOD') chargingText.text = 'Make Brood Cells';
+        else if (selectedBeaconType === 'BLIGHT') chargingText.text = 'Clear Blight';
     });
 
     app.stage.on('pointermove', (e) => {
@@ -801,31 +822,23 @@ async function init() {
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         chargingBeacon.radius = Math.max(HEX_SIZE * 3, distance);
+
+        chargingText.position.set(e.global.x, e.global.y);
     });
 
     const finalizeCharge = () => {
         if (!chargingBeacon) return;
         
+        chargingText.visible = false;
+        
         const finalRadius = chargingBeacon.radius;
 
-        // Apply cooldown
-        if (chargingBeacon.type === 'WAX') waxCooldown = COOLDOWN_MAX.WAX;
-        if (chargingBeacon.type === 'BROOD') broodCooldown = COOLDOWN_MAX.BROOD;
-        if (chargingBeacon.type === 'BLIGHT') blightCooldown = COOLDOWN_MAX.BLIGHT;
-
-        // Remove any existing beacon of the same type
-        for (let i = beacons.length - 1; i >= 0; i--) {
-            if (beacons[i].type === chargingBeacon.type) {
-                beacons.splice(i, 1);
-            }
-        }
 
         const durationSeconds = chargingBeacon.type === 'MOVE' ? 5 : 10;
         const startLife = durationSeconds;
         beacons.push({ x: chargingBeacon.x, y: chargingBeacon.y, life: startLife, maxLife: startLife, aoeRadius: finalRadius, type: chargingBeacon.type });
         
         chargingBeacon = null;
-        selectBeacon('MOVE'); // Auto-revert to move
     };
 
     app.stage.on('pointerup', finalizeCharge);
@@ -863,11 +876,8 @@ async function init() {
         beacons.length = 0;
         setupGrid();
         score = 0;
-        waxCooldown = 0;
-        broodCooldown = 0;
-        blightCooldown = 0;
+
         beacons.length = 0;
-        selectBeacon('MOVE');
         bees.length = 0; 
         bees.push(new Bee(playerStartX, playerStartY, true));
         for (let i = 0; i < 1; i++) {
@@ -920,30 +930,10 @@ async function init() {
         }
         // globalBroodCount = currentBroodCount;
 
-        // Cooldown Timers
-        const dtSeconds = ticker.deltaTime / 60;
-        if (waxCooldown > 0) waxCooldown = Math.max(0, waxCooldown - dtSeconds);
-        if (broodCooldown > 0) broodCooldown = Math.max(0, broodCooldown - dtSeconds);
-        if (blightCooldown > 0) blightCooldown = Math.max(0, blightCooldown - dtSeconds);
 
-        const cdWaxEl = document.getElementById('cd-wax');
-        const cdBroodEl = document.getElementById('cd-brood');
-        const cdBlightEl = document.getElementById('cd-blight');
-
-        if (cdWaxEl) cdWaxEl.innerText = waxCooldown > 0 ? `(${Math.ceil(waxCooldown)}s)` : '';
-        if (cdBroodEl) cdBroodEl.innerText = broodCooldown > 0 ? `(${Math.ceil(broodCooldown)}s)` : '';
-        if (cdBlightEl) cdBlightEl.innerText = blightCooldown > 0 ? `(${Math.ceil(blightCooldown)}s)` : '';
-
-        btnWax.disabled = waxCooldown > 0;
-        btnBrood.disabled = broodCooldown > 0;
-        btnBlight.disabled = blightCooldown > 0;
-
-        // Auto revert UI if trying to select a disabled button
-        if (selectedBeaconType === 'WAX' && waxCooldown > 0) selectBeacon('MOVE');
-        if (selectedBeaconType === 'BROOD' && broodCooldown > 0) selectBeacon('MOVE');
-        if (selectedBeaconType === 'BLIGHT' && blightCooldown > 0) selectBeacon('MOVE');
 
         // Decay beacons
+        const dtSeconds = ticker.deltaTime / 60;
         for (let i = beacons.length - 1; i >= 0; i--) {
             beacons[i].life -= dtSeconds;
             if (beacons[i].life <= 0) {
@@ -996,12 +986,12 @@ async function init() {
                     const px = pos.x + offsetX;
                     const py = pos.y + offsetY;
                     
-                    if (state === 1) graphics.fill({ color: COLOR_WAX }); 
+                    if (state === 1) graphics.fill({ color: COLOR_WAX, alpha: 0.5 }); 
                     else if (state === 3) graphics.fill({ color: COLOR_BROOD }); 
                     else if (state === 5) graphics.fill({ color: COLOR_WOOD }); // Wood
 
                     if (state === 4) {
-                        let blightScale = 1; //1 - Math.random() * 0.1; // Default random static variation
+                        let blightScale = 0.99; //1 - Math.random() * 0.1; // Default random static variation
                         if (ENABLE_BLIGHT_PULSE) {
                             const pulseOffset = (q * 17.3) + (r * 23.7);
                             blightScale = 0.95 + Math.sin(time + pulseOffset) * 0.1 + (Math.random() * 0.02 - 0.01);
@@ -1042,7 +1032,7 @@ async function init() {
                         else if (state === 3) progressColor = COLOR_QUEEN_EGG; // Queen laying egg
                         else if (state === 4) progressColor = COLOR_BLIGHT_REMOVE;
                         
-                        graphics.fill({ color: progressColor, alpha: 0.9 });
+                        graphics.fill({ color: progressColor, alpha: 0.5 });
                         drawHex(graphics, px, py, HEX_SIZE * 0.9 * (work / 100));
                         graphics.fill();
                         graphics.fill({ alpha: 1.0 });
