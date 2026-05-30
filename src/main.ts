@@ -797,7 +797,8 @@ async function init() {
     }
 
     const beeCountEl = document.getElementById('beeCountVal');
-    const completionEl = document.getElementById('completionVal');
+    const tugSwarmEl = document.getElementById('tug-swarm');
+    const tugBlightEl = document.getElementById('tug-blight');
 
     document.getElementById('restartBtn')!.addEventListener('click', () => {
         document.getElementById('game-over')!.style.display = 'none';
@@ -926,9 +927,10 @@ async function init() {
 
         graphics.clear();
         
+        let aliveCells = 0;
+        let blightCells = 0;
         const offsetX = hexWidth / 2;
         const offsetY = hexHeight / 2;
-        let aliveCells = 0;
 
         for (let q = 0; q < COLS; q++) {
             for (let r = 0; r < ROWS; r++) {
@@ -936,9 +938,10 @@ async function init() {
                 const infection = blightProgressGrid[q][r];
                 const work = workProgressGrid[q][r];
                 
-                if (state !== 0 || infection > 0 || work > 0) {
-                    if (state === 1 || state === 3) aliveCells++;
+                if (state === 1 || state === 3) aliveCells++;
+                if (state === 4) blightCells++;
 
+                if (state !== 0 || infection > 0 || work > 0) {
                     const pos = hexToPixel(q, r);
                     const px = pos.x + offsetX;
                     const py = pos.y + offsetY;
@@ -1107,9 +1110,11 @@ async function init() {
             }
         }
 
-        if (completionEl) {
-            const pct = Math.floor((aliveCells / playableCells) * 100);
-            completionEl.innerText = pct.toString();
+        if (tugSwarmEl && tugBlightEl) {
+            const swarmPct = Math.min(100, (aliveCells / playableCells) * 100);
+            const blightPct = Math.min(100, (blightCells / playableCells) * 100);
+            tugSwarmEl.style.width = `${swarmPct}%`;
+            tugBlightEl.style.width = `${blightPct}%`;
         }
 
         if (aliveCells === 0) {
